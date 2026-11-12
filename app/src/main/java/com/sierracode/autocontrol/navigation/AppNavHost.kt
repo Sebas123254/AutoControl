@@ -21,6 +21,8 @@ import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.feature.documents.DocumentEditScreen
 import com.sierracode.autocontrol.feature.expenses.ExpenseEditScreen
 import com.sierracode.autocontrol.feature.fuel.FuelEditScreen
+import com.sierracode.autocontrol.feature.goals.GoalDetailScreen
+import com.sierracode.autocontrol.feature.goals.GoalEditScreen
 import com.sierracode.autocontrol.feature.main.MainScreen
 import com.sierracode.autocontrol.feature.maintenance.MaintenanceEditScreen
 import com.sierracode.autocontrol.feature.onboarding.OnboardingScreen
@@ -50,8 +52,9 @@ sealed class Route(val path: String) {
         fun build(id: String) = "main/$id"
     }
 
-    data object ExpenseEdit : Route("expense_edit/{vehicleId}?expenseId={expenseId}") {
-        fun build(vehicleId: String, expenseId: String? = null) = "expense_edit/$vehicleId?expenseId=${expenseId ?: ""}"
+    data object ExpenseEdit : Route("expense_edit/{vehicleId}?expenseId={expenseId}&goalId={goalId}") {
+        fun build(vehicleId: String, expenseId: String? = null, goalId: String? = null) =
+            "expense_edit/$vehicleId?expenseId=${expenseId ?: ""}&goalId=${goalId ?: ""}"
     }
 
     data object FuelEdit : Route("fuel_edit/{vehicleId}") {
@@ -64,6 +67,15 @@ sealed class Route(val path: String) {
 
     data object DocumentEdit : Route("document_edit/{vehicleId}?documentId={documentId}") {
         fun build(vehicleId: String, docId: String? = null) = "document_edit/$vehicleId?documentId=${docId ?: ""}"
+    }
+
+    data object GoalEdit : Route("goal_edit/{vehicleId}?goalId={goalId}") {
+        fun build(vehicleId: String, goalId: String? = null) = "goal_edit/$vehicleId?goalId=${goalId ?: ""}"
+    }
+
+    // --- NUEVA RUTA PARA EL DETALLE ---
+    data object GoalDetail : Route("goal_detail/{vehicleId}/{goalId}") {
+        fun build(vehicleId: String, goalId: String) = "goal_detail/$vehicleId/$goalId"
     }
 }
 
@@ -123,19 +135,22 @@ fun AppNavHost(nav: NavHostController) {
                     vehicleId = id,
                     onBackToVehicles = { nav.popBackStack() },
                     onRegisterExpense = { nav.navigate(Route.ExpenseEdit.build(id)) },
-                    onEditExpense = { expenseId -> nav.navigate(Route.ExpenseEdit.build(id, expenseId)) }, // <-- NUEVO
+                    onEditExpense = { expenseId -> nav.navigate(Route.ExpenseEdit.build(id, expenseId)) },
                     onRegisterFuel = { nav.navigate(Route.FuelEdit.build(id)) },
                     onRegisterMaintenance = { nav.navigate(Route.MaintenanceEdit.build(id)) },
                     onAddDocument = { nav.navigate(Route.DocumentEdit.build(id)) },
                     onEditDocument = { docId -> nav.navigate(Route.DocumentEdit.build(id, docId)) },
-                    onOpenReminders = { nav.navigate(Route.Reminders.build(id)) } // <-- NUEVO
+                    onOpenReminders = { nav.navigate(Route.Reminders.build(id)) },
+                    onAddGoal = { nav.navigate(Route.GoalEdit.build(id)) },
+                    onGoalClick = { goalId -> nav.navigate(Route.GoalDetail.build(id, goalId)) } // Ahora va al Detalle
                 )
             }
 
             composable(Route.ExpenseEdit.path) { back ->
                 val vId = back.arguments!!.getString("vehicleId")!!
                 val eId = back.arguments?.getString("expenseId")?.takeIf { it.isNotBlank() }
-                ExpenseEditScreen(vehicleId = vId, expenseId = eId, onDone = { nav.popBackStack() })
+                val gId = back.arguments?.getString("goalId")?.takeIf { it.isNotBlank() }
+                ExpenseEditScreen(vehicleId = vId, expenseId = eId, goalId = gId, onDone = { nav.popBackStack() })
             }
 
             composable(Route.FuelEdit.path) { back ->
@@ -153,9 +168,25 @@ fun AppNavHost(nav: NavHostController) {
                 val dId = back.arguments?.getString("documentId")?.takeIf { it.isNotBlank() }
                 DocumentEditScreen(onDone = { nav.popBackStack() })
             }
+
             composable(Route.Reminders.path) { back ->
                 val vId = back.arguments!!.getString("vehicleId")!!
                 RemindersScreen(vehicleId = vId, onBack = { nav.popBackStack() })
+            }
+
+            composable(Route.GoalEdit.path) { back ->
+                GoalEditScreen(onDone = { nav.popBackStack() })
+            }
+
+            // --- NUEVO COMPOSABLE DE DETALLE ---
+            composable(Route.GoalDetail.path) { back ->
+                val vId = back.arguments!!.getString("vehicleId")!!
+                val gId = back.arguments!!.getString("goalId")!!
+                GoalDetailScreen(
+                    onBack = { nav.popBackStack() },
+                    onEditClick = { nav.navigate(Route.GoalEdit.build(vId, gId)) },
+                    onBuyClick = { nav.navigate(Route.ExpenseEdit.build(vId, null, gId)) }
+                )
             }
         }
     }
@@ -195,4 +226,3 @@ fun SplashScreen() {
         }
     }
 }
-

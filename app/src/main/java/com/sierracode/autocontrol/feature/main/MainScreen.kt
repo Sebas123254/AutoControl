@@ -16,11 +16,13 @@ import androidx.navigation.compose.rememberNavController
 import com.sierracode.autocontrol.feature.dashboard.DashboardScreen
 import com.sierracode.autocontrol.feature.documents.DocumentsScreen
 import com.sierracode.autocontrol.feature.expenses.ExpensesScreen
+import com.sierracode.autocontrol.feature.goals.GoalsScreen
 import com.sierracode.autocontrol.feature.stats.StatsScreen
 
 sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
     data object Dashboard : BottomNavItem("dashboard/{vehicleId}", Icons.Default.Home, "Inicio")
     data object Expenses : BottomNavItem("expenses/{vehicleId}", Icons.Default.Receipt, "Gastos")
+    data object Goals : BottomNavItem("goals/{vehicleId}", Icons.Default.Flag, "Objetivos")
     data object Stats : BottomNavItem("stats/{vehicleId}", Icons.Default.BarChart, "Stats")
     data object Documents : BottomNavItem("documents/{vehicleId}", Icons.Default.Folder, "Docs")
 }
@@ -30,17 +32,20 @@ fun MainScreen(
     vehicleId: String,
     onBackToVehicles: () -> Unit,
     onRegisterExpense: () -> Unit,
-    onEditExpense: (String) -> Unit, // <-- NUEVO
+    onEditExpense: (String) -> Unit,
     onRegisterFuel: () -> Unit,
     onRegisterMaintenance: () -> Unit,
     onEditDocument: (String) -> Unit,
     onOpenReminders: () -> Unit,
-    onAddDocument: () -> Unit
+    onAddDocument: () -> Unit,
+    onAddGoal: () -> Unit,
+    onGoalClick: (String) -> Unit // <-- NUEVO PARÁMETRO
 ) {
     val navController = rememberNavController()
     val items = listOf(
         BottomNavItem.Dashboard,
         BottomNavItem.Expenses,
+        BottomNavItem.Goals,
         BottomNavItem.Stats,
         BottomNavItem.Documents
     )
@@ -94,7 +99,16 @@ fun MainScreen(
                 ExpensesScreen(
                     vehicleId = vId,
                     onBack = { /* No hace falta */ },
-                    onEditClick = onEditExpense // <-- NUEVO
+                    onEditClick = onEditExpense
+                )
+            }
+            composable(BottomNavItem.Goals.route) { backStackEntry ->
+                val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
+                GoalsScreen(
+                    vehicleId = vId,
+                    onBack = { /* No hace falta */ },
+                    onAddClick = onAddGoal,
+                    onGoalClick = onGoalClick // <-- Lo conectamos
                 )
             }
             composable(BottomNavItem.Stats.route) { backStackEntry ->

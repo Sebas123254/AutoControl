@@ -156,3 +156,24 @@ data class ReminderEntity(
     val enabled: Boolean = true,
     val lastNotifiedAt: Long? = null
 )
+
+@Entity(
+    tableName = "goals",
+    foreignKeys = [ForeignKey(VehicleEntity::class, ["id"], ["vehicleId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("vehicleId")]
+)
+data class GoalEntity(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val vehicleId: String,
+    val title: String,
+    val notes: String? = null,
+    val estimatedCents: Long,
+    val estimatedMaxCents: Long? = null,
+    val priority: String = "MEDIA", // "ALTA", "MEDIA", "BAJA"
+    val targetDateEpochDay: Long? = null,
+    val status: String = "PENDIENTE", // "PENDIENTE", "COMPRADO"
+    val categoryId: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val completedAt: Long? = null,
+    val linkedExpenseId: String? = null
+)

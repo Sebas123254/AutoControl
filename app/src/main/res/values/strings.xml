@@ -9,6 +9,8 @@
     <string name="action_delete">Eliminar</string>
     <string name="action_yes_restore">Sí, restaurar</string>
     <string name="action_understood">Entendido</string>
+    <string name="action_share">Compartir</string>
+    <string name="action_delete_plural">Eliminar seleccionados</string>
 
     <!-- Vehículos -->
     <string name="vehicles_title">Mis Vehículos</string>
@@ -64,6 +66,14 @@
     <string name="expenses_amplify">Ampliar</string>
     <string name="expenses_full_screen">Recibo a pantalla completa</string>
     <string name="expenses_default_name">Gasto</string>
+    <string name="expenses_share_title">Compartir recibo</string>
+    <string name="expenses_selected">%1$d seleccionados</string>
+    <string name="expenses_select_all">Seleccionar todo</string>
+    <string name="expenses_delete_title">Eliminar %1$d gasto(s)</string>
+    <string name="expenses_delete_desc">Se eliminarán también sus recibos y detalles asociados. Esta acción no se puede deshacer.</string>
+    <string name="expenses_deleted_success">%1$d gasto(s) eliminado(s)</string>
+    <string name="expenses_delete_error">Error al eliminar los gastos</string>
+    <string name="expenses_cancel_selection">Cancelar selección</string>
 
     <!-- Editar Gasto -->
     <string name="expense_edit_new">Registrar Gasto</string>
@@ -146,16 +156,38 @@
     <string name="settings_dev">SierraCode</string>
     <string name="settings_version">Versión %1$s</string>
 
-    <string name="action_share">Compartir</string>
-    <string name="expenses_share_title">Compartir recibo</string>
+    <!-- Objetivos -->
+    <string name="goals_title">Objetivos y Pendientes</string>
+    <string name="goals_add">Agregar Objetivo</string>
+    <string name="goals_empty">No tienes objetivos pendientes. ¡Agrega algo que quieras hacerle a tu auto!</string>
+    <string name="goals_total_pending">Total estimado pendiente:</string>
+    <string name="goals_range">entre %1$s y %2$s</string>
+    <string name="goals_completed_section">Comprados (%1$d)</string>
+    <string name="goals_est">Estimado: %1$s</string>
+    <string name="goals_real_vs_est">Estimado %1$s · Real %2$s</string>
+    <string name="goals_buy">Comprar</string>
+    <string name="goal_delete_title">Eliminar objetivo</string>
+    <string name="goal_delete_desc">¿Estás seguro de eliminar este objetivo?</string>
+    <string name="goals_edit_title">Objetivo</string>
+    <string name="goals_field_title">Título (Ej. Cambiar wipers) *</string>
+    <string name="goals_field_amount">Monto estimado ($) *</string>
+    <string name="goals_field_max">Monto máximo ($) (Opcional)</string>
+    <string name="goals_field_priority">Prioridad</string>
+    <string name="goals_field_category">Categoría (Opcional)</string>
+    <string name="goals_field_date">Fecha objetivo (Opcional)</string>
+    <string name="goals_field_notes">Notas (Opcional)</string>
+    <string name="goal_err_valid">Ingresa un título y un monto válido</string>
+    <string name="goals_save">Guardar Objetivo</string>
 
-    <!-- Selección Múltiple Gastos -->
-    <string name="expenses_selected">%1$d seleccionados</string>
-    <string name="expenses_select_all">Seleccionar todo</string>
-    <string name="expenses_delete_title">Eliminar %1$d gasto(s)</string>
-    <string name="expenses_delete_desc">Se eliminarán también sus recibos y detalles asociados. Esta acción no se puede deshacer.</string>
-    <string name="expenses_deleted_success">%1$d gasto(s) eliminado(s)</string>
-    <string name="expenses_delete_error">Error al eliminar los gastos</string>
-    <string name="expenses_cancel_selection">Cancelar selección</string>
-    <string name="action_delete_plural">Eliminar seleccionados</string>
+    <!-- Detalle de Objetivo -->
+    <string name="goals_detail_title">Detalle del Objetivo</string>
+    <string name="goals_priority">Prioridad %1$s</string>
+    <string name="goals_estimated_cost">Costo estimado:</string>
+    <string name="goals_real_cost">Costo real:</string>
+    <string name="goals_status_completed">¡COMPRADO!</string>
+    <string name="goals_target_date">Fecha objetivo: %1$s</string>
+    <string name="goals_notes">Notas:</string>
+    <string name="goals_buy_action">Registrar Compra y Gasto</string>
+    <string name="goals_diff_over">Gastaste %1$s más de lo estimado</string>
+    <string name="goals_diff_saved">¡Ahorraste %1$s!</string>
 </resources>

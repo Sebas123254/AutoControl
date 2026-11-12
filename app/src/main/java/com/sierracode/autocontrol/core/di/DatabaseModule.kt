@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.MIGRATION_1_2
 import com.sierracode.autocontrol.data.local.MIGRATION_2_3
+import com.sierracode.autocontrol.data.local.MIGRATION_3_4
 import com.sierracode.autocontrol.data.local.seed.CategorySeed
 import dagger.Module
 import dagger.Provides
@@ -26,7 +27,7 @@ object DatabaseModule {
         @AppScope scope: CoroutineScope
     ): AutoControlDatabase {
         val db = Room.databaseBuilder(ctx, AutoControlDatabase::class.java, "autocontrol.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4) // <-- Añadir MIGRATION_3_4
             .build()
 
         scope.launch(Dispatchers.IO) {
@@ -46,4 +47,6 @@ object DatabaseModule {
     @Provides fun documentDao(db: AutoControlDatabase) = db.documentDao()
     @Provides fun reminderDao(db: AutoControlDatabase) = db.reminderDao()
     @Provides fun attachmentDao(db: AutoControlDatabase) = db.attachmentDao()
+
+    @Provides fun goalDao(db: AutoControlDatabase) = db.goalDao() // <-- NUEVO
 }

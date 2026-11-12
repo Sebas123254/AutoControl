@@ -44,11 +44,13 @@ class ExpenseEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
     private val attachmentRepo: AttachmentRepository,
+    private val goalRepo: GoalRepository, // <-- NUEVO
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
     private val expenseId: String? = savedStateHandle.get<String>("expenseId")?.takeIf { it.isNotBlank() }
+    private val goalId: String? = savedStateHandle.get<String>("goalId")?.takeIf { it.isNotBlank() } // <-- NUEVO
 
     val categories = categoryRepo.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -76,6 +78,18 @@ class ExpenseEditViewModel @Inject constructor(
                     val oldAttachment = attachmentRepo.getForOwner("expense", expenseId)
                     if (oldAttachment != null) {
                         selectedImageUri = Uri.parse(oldAttachment.uri)
+                    }
+                }
+            }
+        } else if (goalId != null) {
+            // Prellenar si venimos desde la pantalla de Objetivos
+            viewModelScope.launch {
+                goalRepo.get(goalId)?.let { goal ->
+                    amount = (goal.estimatedCents / 100.0).toString()
+                    description = goal.title
+                    if (goal.categoryId != null) {
+                        val catList = categories.first { it.isNotEmpty() }
+                        selectedCategory = catList.find { it.id == goal.categoryId }
                     }
                 }
             }
@@ -139,6 +153,11 @@ class ExpenseEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, null, null, attachment)
 
+                // SI VENIMOS DE UN OBJETIVO, LO MARCAMOS COMO COMPRADO
+                if (goalId != null && expenseId == null) {
+                    goalRepo.markCompleted(goalId, finalExpenseId)
+                }
+
                 if (odo != null && odo > 0) {
                     vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
                 }
@@ -158,6 +177,7 @@ class ExpenseEditViewModel @Inject constructor(
 fun ExpenseEditScreen(
     vehicleId: String,
     expenseId: String?,
+    goalId: String? = null, // <-- NUEVO PARÁMETRO
     onDone: () -> Unit,
     vm: ExpenseEditViewModel = hiltViewModel()
 ) {
