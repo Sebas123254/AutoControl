@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable // <-- IMPORT AGREGADO
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -12,7 +13,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -100,7 +100,6 @@ fun AppNavHost(nav: NavHostController) {
         minTimePassed = true
     }
 
-    // NUEVO: Bandera para controlar la redirección automática inicial
     var autoNavigateToLastVehicle by rememberSaveable { mutableStateOf(true) }
 
     if (onboarded == null || !minTimePassed) {
@@ -117,7 +116,7 @@ fun AppNavHost(nav: NavHostController) {
             composable(Route.Vehicles.path) {
                 VehiclesScreen(
                     autoNavigateToLast = autoNavigateToLastVehicle,
-                    onNavigated = { autoNavigateToLastVehicle = false }, // Se apaga tras el primer salto
+                    onNavigated = { autoNavigateToLastVehicle = false },
                     onAddClick = { nav.navigate(Route.VehicleEdit.build(null)) },
                     onVehicleClick = { id -> nav.navigate(Route.Main.build(id)) },
                     onEditClick = { id -> nav.navigate(Route.VehicleEdit.build(id)) },
@@ -146,6 +145,7 @@ fun AppNavHost(nav: NavHostController) {
                     onAddDocument = { nav.navigate(Route.DocumentEdit.build(id)) },
                     onEditDocument = { docId -> nav.navigate(Route.DocumentEdit.build(id, docId)) },
                     onOpenReminders = { nav.navigate(Route.Reminders.build(id)) },
+                    onOpenSettings = { nav.navigate(Route.Settings.path) },
                     onAddGoal = { nav.navigate(Route.GoalEdit.build(id)) },
                     onGoalClick = { goalId -> nav.navigate(Route.GoalDetail.build(id, goalId)) }
                 )
@@ -170,7 +170,6 @@ fun AppNavHost(nav: NavHostController) {
 
             composable(Route.DocumentEdit.path) { back ->
                 val vId = back.arguments!!.getString("vehicleId")!!
-                val dId = back.arguments?.getString("documentId")?.takeIf { it.isNotBlank() }
                 DocumentEditScreen(onDone = { nav.popBackStack() })
             }
 

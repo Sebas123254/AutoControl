@@ -8,11 +8,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
+import com.sierracode.autocontrol.core.ui.AppConfig
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.theme.AutoControlTheme
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.navigation.AppNavHost
@@ -27,19 +30,25 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 1. Pedir permiso de notificaciones (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
             }
         }
 
-        // 2. Cargar la interfaz de la app
         setContent {
             val dark by settings.darkMode.collectAsState(initial = null)
+            val currency by settings.currencyCode.collectAsState(initial = "MXN")
+            val unitSys by settings.unitSystem.collectAsState(initial = com.sierracode.autocontrol.data.preferences.UnitSystem.METRIC)
+            val effFormat by settings.efficiencyFormat.collectAsState(initial = com.sierracode.autocontrol.data.preferences.EfficiencyFormat.KM_PER_L)
+
+            val appConfig = AppConfig(currency, unitSys, effFormat)
+
             AutoControlTheme(darkTheme = dark ?: isSystemInDarkTheme()) {
-                val nav = rememberNavController()
-                AppNavHost(nav)
+                CompositionLocalProvider(LocalAppConfig provides appConfig) {
+                    val nav = rememberNavController()
+                    AppNavHost(nav)
+                }
             }
         }
     }

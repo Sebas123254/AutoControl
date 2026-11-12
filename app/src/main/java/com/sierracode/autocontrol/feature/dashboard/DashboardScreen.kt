@@ -1,13 +1,11 @@
 package com.sierracode.autocontrol.feature.dashboard
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +17,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
-import com.sierracode.autocontrol.core.format.formatDouble
+import com.sierracode.autocontrol.core.format.formatCostPerDistance
+import com.sierracode.autocontrol.core.format.formatEfficiency
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.data.repository.*
@@ -36,11 +35,13 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 data class EvaluatedSchedule(
+    val id: String, // <-- Añadido para poder borrar
     val name: String,
     val urgency: Urgency,
     val remainingKm: Long?,
@@ -112,7 +113,7 @@ class DashboardViewModel @Inject constructor(
                         remindBeforeKm = s.remindBeforeKm,
                         remindBeforeDays = s.remindBeforeDays
                     )
-                    EvaluatedSchedule(s.name, status.urgency, status.byKm, status.byDate)
+                    EvaluatedSchedule(s.id, s.name, status.urgency, status.byKm, status.byDate)
                 }
             }
         }
@@ -129,9 +130,7 @@ class DashboardViewModel @Inject constructor(
                     epochDay = f.dateEpochDay
                 )
             }
-
             val summary = summarizeFuel(points)
-
             val hint = when {
                 points.isEmpty() -> "Registra tu primera carga de gasolina."
                 points.any { it.odometer == null } -> "Falta el odómetro en algunas cargas. Ingrésalo para calcular."
@@ -146,6 +145,12 @@ class DashboardViewModel @Inject constructor(
     fun loadVehicle(id: String) {
         vehicleIdFlow.value = id
     }
+
+    fun deleteSchedule(id: String) {
+        viewModelScope.launch {
+            scheduleRepo.delete(id)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -157,6 +162,7 @@ fun DashboardScreen(
     onRegisterFuel: () -> Unit,
     onRegisterMaintenance: () -> Unit,
     onOpenReminders: () -> Unit,
+    onOpenSettings: () -> Unit, // <-- NUEVO PARÁMETRO
     vm: DashboardViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) {
@@ -169,6 +175,25 @@ fun DashboardScreen(
     val costMetrics by vm.costMetrics.collectAsState()
     val schedules by vm.schedules.collectAsState()
 
+    var scheduleToDelete by remember { mutableStateOf<EvaluatedSchedule?>(null) }
+
+    if (scheduleToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { scheduleToDelete = null },
+            title = { Text("Eliminar recordatorio") },
+            text = { Text("¿Deseas eliminar el recordatorio de '${scheduleToDelete!!.name}'? Esto no borrará el gasto histórico, solo detendrá las alertas futuras.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteSchedule(scheduleToDelete!!.id)
+                    scheduleToDelete = null
+                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { scheduleToDelete = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -176,6 +201,15 @@ fun DashboardScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.DirectionsCar, contentDescription = stringResource(R.string.vehicles_title))
+                    }
+                },
+                actions = {
+                    // NUEVOS ACCESOS RÁPIDOS
+                    IconButton(onClick = onOpenReminders) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Recordatorios")
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Ajustes")
                     }
                 }
             )
@@ -229,13 +263,15 @@ fun DashboardScreen(
                             Urgency.UNKNOWN -> stringResource(R.string.cd_maint_unknown)
                         }
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { scheduleToDelete = schedule }, // <-- CLIC PARA BORRAR
                             colors = CardDefaults.cardColors(containerColor = color)
                         ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     Icons.Default.Warning,
-                                    contentDescription = cdText, // MEJORA DE ACCESIBILIDAD
+                                    contentDescription = cdText,
                                     tint = if (schedule.urgency == Urgency.OK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(Modifier.width(16.dp))
@@ -278,7 +314,7 @@ fun DashboardScreen(
                             Spacer(Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.dashboard_cost_per_km), style = MaterialTheme.typography.bodyMedium)
-                                Text(costPerKm?.let { "$${"%.2f".format(it / 100)}/km" } ?: "—", fontWeight = FontWeight.Bold)
+                                Text(formatCostPerDistance(costPerKm), fontWeight = FontWeight.Bold)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.dashboard_cost_per_month), style = MaterialTheme.typography.bodyMedium)
@@ -295,7 +331,7 @@ fun DashboardScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(stringResource(R.string.dashboard_avg_performance), style = MaterialTheme.typography.labelMedium)
                         Text(
-                            text = if (fuelStats?.avgKmL != null) formatDouble(fuelStats!!.avgKmL, 2, " km/L") else stringResource(R.string.dashboard_no_data),
+                            text = if (fuelStats?.avgKmL != null) formatEfficiency(fuelStats!!.avgKmL) else stringResource(R.string.dashboard_no_data),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -310,11 +346,6 @@ fun DashboardScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onRegisterFuel, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.dashboard_action_fuel)) }
                     Button(onClick = onRegisterMaintenance, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.dashboard_action_maint)) }
-                }
-                OutlinedButton(onClick = onOpenReminders, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Notifications, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.dashboard_action_reminders))
                 }
             }
         }

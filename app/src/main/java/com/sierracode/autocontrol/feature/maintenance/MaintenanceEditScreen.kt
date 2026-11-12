@@ -30,13 +30,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.local.entity.MaintenanceDetailEntity
 import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
+import com.sierracode.autocontrol.data.preferences.SettingsStore
+import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.*
+import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -46,12 +50,14 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
+import kotlin.math.roundToLong
 
 @HiltViewModel
 class MaintenanceEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
     private val scheduleRepo: ScheduleRepository,
+    private val settingsStore: SettingsStore, // <-- INYECTADO
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -75,11 +81,15 @@ class MaintenanceEditViewModel @Inject constructor(
     var error by mutableStateOf<String?>(null)
 
     init {
-        // PRE-LLENAR EL ODÓMETRO CON EL VALOR ACTUAL DEL VEHÍCULO
         viewModelScope.launch {
+            val unitSystem = settingsStore.unitSystem.first()
             val vehicle = vehicleRepo.observe(vehicleId).first()
             if (vehicle != null && odometer.isEmpty()) {
-                odometer = vehicle.odometer.toString()
+                odometer = if (unitSystem == UnitSystem.US) {
+                    UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
+                } else {
+                    vehicle.odometer.toString()
+                }
             }
         }
     }
@@ -91,14 +101,23 @@ class MaintenanceEditViewModel @Inject constructor(
     fun updateNextOdometer(newNextOdo: String) { nextOdometer = newNextOdo; hasUnsavedChanges = true }
     fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
 
-    fun save(context: android.content.Context, onDone: () -> Unit) {
+    fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
         val amt = amount.toDoubleOrNull() ?: 0.0
-        val odo = odometer.toLongOrNull()
+        val odoInput = odometer.toDoubleOrNull()
+        val nextOdoInput = nextOdometer.toDoubleOrNull()
 
         if (selectedCategory == null || amt <= 0) {
             error = context.getString(R.string.maint_edit_err_valid)
             return
         }
+
+        val odoKm = if (odoInput != null) {
+            if (unitSystem == UnitSystem.METRIC) odoInput.roundToLong() else UnitConverter.milesToKm(odoInput)
+        } else null
+
+        val nextOdoKm = if (nextOdoInput != null) {
+            if (unitSystem == UnitSystem.METRIC) nextOdoInput.roundToLong() else UnitConverter.milesToKm(nextOdoInput)
+        } else null
 
         viewModelScope.launch {
             isLoading = true
@@ -109,18 +128,17 @@ class MaintenanceEditViewModel @Inject constructor(
                     vehicleId = vehicleId,
                     type = "MAINTENANCE",
                     categoryId = selectedCategory!!.id,
-                    amountCents = (amt * 100).toLong(),
+                    amountCents = (amt * 100).roundToLong(),
                     dateEpochDay = LocalDate.now().toEpochDay(),
-                    odometer = odo,
+                    odometer = odoKm,
                     description = selectedCategory!!.name
                 )
 
-                val nextOdo = nextOdometer.toLongOrNull()
                 val detail = MaintenanceDetailEntity(
                     expenseId = expenseId,
                     serviceName = selectedCategory!!.name,
                     workshop = workshop.takeIf { it.isNotBlank() },
-                    nextOdometer = nextOdo
+                    nextOdometer = nextOdoKm
                 )
 
                 var attachment: AttachmentEntity? = null
@@ -141,30 +159,31 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
-                if (odo != null) {
+                if (odoKm != null) {
                     val existingSchedule = scheduleRepo.getActiveByName(vehicleId, selectedCategory!!.name)
 
                     if (existingSchedule != null) {
+                        val interval = if (nextOdoKm != null) (nextOdoKm - odoKm) else existingSchedule.intervalKm
                         val updatedSchedule = existingSchedule.copy(
-                            lastOdometer = odo,
+                            lastOdometer = odoKm,
                             lastDateEpochDay = LocalDate.now().toEpochDay(),
-                            intervalKm = if (nextOdo != null) (nextOdo - odo) else existingSchedule.intervalKm
+                            intervalKm = interval
                         )
                         scheduleRepo.upsert(updatedSchedule)
-                    } else if (nextOdo != null) {
+                    } else if (nextOdoKm != null) {
                         val newSchedule = MaintenanceScheduleEntity(
                             vehicleId = vehicleId,
                             name = selectedCategory!!.name,
-                            intervalKm = nextOdo - odo,
-                            lastOdometer = odo,
+                            intervalKm = nextOdoKm - odoKm,
+                            lastOdometer = odoKm,
                             lastDateEpochDay = LocalDate.now().toEpochDay()
                         )
                         scheduleRepo.upsert(newSchedule)
                     }
                 }
 
-                if (odo != null && odo > 0) {
-                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
+                if (odoKm != null && odoKm > 0) {
+                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odoKm)
                 }
 
                 hasUnsavedChanges = false
@@ -185,6 +204,7 @@ fun MaintenanceEditScreen(
     onDone: () -> Unit,
     vm: MaintenanceEditViewModel = hiltViewModel()
 ) {
+    val config = LocalAppConfig.current
     val categories by vm.maintCategories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -223,6 +243,8 @@ fun MaintenanceEditScreen(
             }
         )
     }
+
+    val unitLabel = if (config.unitSystem == UnitSystem.METRIC) "km" else "mi"
 
     Scaffold(
         topBar = {
@@ -272,6 +294,7 @@ fun MaintenanceEditScreen(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
                 label = { Text(stringResource(R.string.maint_edit_cost)) },
+                suffix = { Text(config.currencyCode) },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next
@@ -284,6 +307,7 @@ fun MaintenanceEditScreen(
                 value = vm.odometer,
                 onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.fuel_edit_odometer)) },
+                suffix = { Text(unitLabel) },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Next
@@ -305,6 +329,7 @@ fun MaintenanceEditScreen(
                 value = vm.nextOdometer,
                 onValueChange = { vm.updateNextOdometer(it) },
                 label = { Text(stringResource(R.string.maint_edit_next_odo)) },
+                suffix = { Text(unitLabel) },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Done
@@ -336,7 +361,7 @@ fun MaintenanceEditScreen(
             }
 
             Button(
-                onClick = { vm.save(context, onDone) },
+                onClick = { vm.save(context, config.unitSystem, onDone) },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {

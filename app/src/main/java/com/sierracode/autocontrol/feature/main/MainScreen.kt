@@ -38,6 +38,7 @@ fun MainScreen(
     onRegisterMaintenance: () -> Unit,
     onEditDocument: (String) -> Unit,
     onOpenReminders: () -> Unit,
+    onOpenSettings: () -> Unit,
     onAddDocument: () -> Unit,
     onAddGoal: () -> Unit,
     onGoalClick: (String) -> Unit
@@ -51,16 +52,13 @@ fun MainScreen(
         BottomNavItem.Documents
     )
 
-    // Lógica del botón Atrás para las pestañas inferiores
     BackHandler(enabled = true) {
         val currentRoute = navController.currentBackStackEntry?.destination?.route
         val dashboardRoute = BottomNavItem.Dashboard.route.replace("{vehicleId}", vehicleId)
 
         if (currentRoute == dashboardRoute) {
-            // Si está en el Dashboard, sale al listado de vehículos
             onBackToVehicles()
         } else {
-            // Si está en otra pestaña, regresa al Dashboard
             navController.navigate(dashboardRoute) {
                 popUpTo(navController.graph.startDestinationId) { saveState = true }
                 launchSingleTop = true
@@ -110,7 +108,8 @@ fun MainScreen(
                     onRegisterExpense = onRegisterExpense,
                     onRegisterFuel = onRegisterFuel,
                     onRegisterMaintenance = onRegisterMaintenance,
-                    onOpenReminders = onOpenReminders
+                    onOpenReminders = onOpenReminders,
+                    onOpenSettings = onOpenSettings
                 )
             }
             composable(BottomNavItem.Expenses.route) { backStackEntry ->

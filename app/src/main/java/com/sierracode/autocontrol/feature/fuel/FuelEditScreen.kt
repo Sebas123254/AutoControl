@@ -31,14 +31,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.local.entity.FuelDetailEntity
+import com.sierracode.autocontrol.data.preferences.SettingsStore
+import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.CategoryRepository
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import com.sierracode.autocontrol.data.repository.VehicleRepository
+import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -48,11 +52,13 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
+import kotlin.math.roundToLong
 
 @HiltViewModel
 class FuelEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
+    private val settingsStore: SettingsStore, // <-- Inyectado
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -79,21 +85,24 @@ class FuelEditViewModel @Inject constructor(
     var warningMessage by mutableStateOf<String?>(null)
         private set
 
-    // Validación en línea
-    val isLitersError = liters.isNotEmpty() && (liters.toDoubleOrNull() ?: 0.0) > 200.0
-
     init {
         viewModelScope.launch {
+            val unitSystem = settingsStore.unitSystem.first()
             val vehicle = vehicleRepo.observe(vehicleId).first()
             if (vehicle != null && odometer.isEmpty()) {
-                odometer = vehicle.odometer.toString()
+                // LÓGICA AÑADIDA: Convertir el odómetro del vehículo a la unidad actual
+                odometer = if (unitSystem == UnitSystem.US) {
+                    UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
+                } else {
+                    vehicle.odometer.toString()
+                }
             }
         }
     }
 
     fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
     fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
-    fun updateLiters(newLiters: String) { liters = newLiters; onLitersOrPriceChange(); hasUnsavedChanges = true; error = null }
+    fun updateLiters(newLiters: String) { liters = newLiters; onLitersOrPriceChange(); hasUnsavedChanges = true }
     fun updatePrice(newPrice: String) { pricePerLiter = newPrice; onLitersOrPriceChange(); hasUnsavedChanges = true }
     fun updateTotal(newTotal: String) { total = newTotal; hasUnsavedChanges = true }
     fun updateStation(newStation: String) { station = newStation; hasUnsavedChanges = true }
@@ -109,24 +118,37 @@ class FuelEditViewModel @Inject constructor(
         }
     }
 
-    fun save(context: android.content.Context, onDone: () -> Unit) {
-        val l = liters.toDoubleOrNull() ?: 0.0
-        val t = total.toDoubleOrNull() ?: 0.0
-        val p = pricePerLiter.toDoubleOrNull() ?: 0.0
-        val odo = odometer.toLongOrNull()
+    fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
+        val lInput = liters.toDoubleOrNull() ?: 0.0
+        val tInput = total.toDoubleOrNull() ?: 0.0
+        val pInput = pricePerLiter.toDoubleOrNull() ?: 0.0
+        val odoInput = odometer.toDoubleOrNull()
 
-        if (t <= 0 || l <= 0) {
+        if (tInput <= 0 || lInput <= 0) {
             error = context.getString(R.string.fuel_edit_err_valid)
-            return
-        }
-        if (l > 200.0) {
-            error = "El límite máximo es de 200 litros."
             return
         }
         if (selectedCategory == null) {
             error = context.getString(R.string.fuel_edit_err_type)
             return
         }
+
+        val odoKm = if (odoInput != null) {
+            if (unitSystem == UnitSystem.METRIC) odoInput.roundToLong() else UnitConverter.milesToKm(odoInput)
+        } else null
+
+        val litersMilli = if (unitSystem == UnitSystem.METRIC) {
+            (lInput * 1000).roundToLong()
+        } else {
+            UnitConverter.gallonsToLitersMilli(lInput)
+        }
+
+        val pricePerLiterDouble = if (unitSystem == UnitSystem.METRIC) {
+            pInput
+        } else {
+            pInput / UnitConverter.LITERS_PER_GALLON
+        }
+        val pricePerLiterCents = (pricePerLiterDouble * 100).roundToLong()
 
         viewModelScope.launch {
             isLoading = true
@@ -137,16 +159,16 @@ class FuelEditViewModel @Inject constructor(
                     vehicleId = vehicleId,
                     type = "FUEL",
                     categoryId = selectedCategory!!.id,
-                    amountCents = (t * 100).toLong(),
+                    amountCents = (tInput * 100).roundToLong(),
                     dateEpochDay = LocalDate.now().toEpochDay(),
-                    odometer = odo,
+                    odometer = odoKm,
                     description = context.getString(R.string.fuel_edit_desc, selectedCategory!!.name.lowercase())
                 )
 
                 val fuelDetail = FuelDetailEntity(
                     expenseId = expenseId,
-                    litersMilli = (l * 1000).toLong(),
-                    pricePerLiterCents = (p * 100).toLong(),
+                    litersMilli = litersMilli,
+                    pricePerLiterCents = pricePerLiterCents,
                     fuelType = selectedCategory!!.name.uppercase(),
                     station = station.takeIf { it.isNotBlank() },
                     fullTank = isFullTank
@@ -172,8 +194,8 @@ class FuelEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, fuelDetail, null, attachment)
 
-                if (odo != null && odo > 0) {
-                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
+                if (odoKm != null && odoKm > 0) {
+                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odoKm)
                 }
 
                 hasUnsavedChanges = false
@@ -194,6 +216,7 @@ fun FuelEditScreen(
     onDone: () -> Unit,
     vm: FuelEditViewModel = hiltViewModel()
 ) {
+    val config = LocalAppConfig.current
     val categories by vm.fuelCategories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -240,6 +263,9 @@ fun FuelEditScreen(
             }
         )
     }
+
+    val unitLabel = if (config.unitSystem == UnitSystem.METRIC) "km" else "mi"
+    val volumeLabel = if (config.unitSystem == UnitSystem.METRIC) "L" else "gal"
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -290,6 +316,7 @@ fun FuelEditScreen(
                 value = vm.odometer,
                 onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.fuel_edit_odometer)) },
+                suffix = { Text(unitLabel) },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Next
@@ -303,17 +330,12 @@ fun FuelEditScreen(
                     value = vm.liters,
                     onValueChange = { vm.updateLiters(it) },
                     label = { Text(stringResource(R.string.fuel_edit_liters)) },
+                    suffix = { Text(volumeLabel) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Decimal,
                         imeAction = ImeAction.Next
                     ),
                     keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Right) }),
-                    isError = vm.isLitersError,
-                    supportingText = {
-                        if (vm.isLitersError) {
-                            Text("Máximo 200 L")
-                        }
-                    },
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
@@ -333,6 +355,7 @@ fun FuelEditScreen(
                 value = vm.total,
                 onValueChange = { vm.updateTotal(it) },
                 label = { Text(stringResource(R.string.fuel_edit_total)) },
+                suffix = { Text(config.currencyCode) }, // <-- AÑADIDO: Muestra la divisa
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next
@@ -382,7 +405,7 @@ fun FuelEditScreen(
             }
 
             Button(
-                onClick = { vm.save(context, onDone) },
+                onClick = { vm.save(context, config.unitSystem, onDone) },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {

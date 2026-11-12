@@ -31,11 +31,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
+import com.sierracode.autocontrol.data.preferences.SettingsStore
+import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.*
+import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -43,6 +47,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlin.math.roundToLong
 
 @HiltViewModel
 class ExpenseEditViewModel @Inject constructor(
@@ -50,6 +55,7 @@ class ExpenseEditViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val attachmentRepo: AttachmentRepository,
     private val goalRepo: GoalRepository,
+    private val settingsStore: SettingsStore, // <-- INYECTADO
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -72,11 +78,9 @@ class ExpenseEditViewModel @Inject constructor(
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
-    // Para Snackbar de fallo de imagen
     var warningMessage by mutableStateOf<String?>(null)
         private set
 
-    // Validación en línea
     val isAmountError = amount.isNotEmpty() && (amount.toDoubleOrNull() ?: 0.0) <= 0.0
 
     init {
@@ -86,7 +90,12 @@ class ExpenseEditViewModel @Inject constructor(
                 val existingExpense = expenseRepo.get(expenseId)
                 if (existingExpense != null) {
                     amount = (existingExpense.amountCents / 100.0).toString()
-                    odometer = existingExpense.odometer?.toString() ?: ""
+
+                    val unitSystem = settingsStore.unitSystem.first()
+                    odometer = existingExpense.odometer?.let { km ->
+                        if (unitSystem == UnitSystem.US) UnitConverter.kmToMiles(km).roundToLong().toString() else km.toString()
+                    } ?: ""
+
                     description = existingExpense.description ?: ""
                     selectedCategory = catList.find { it.id == existingExpense.categoryId }
 
@@ -98,9 +107,14 @@ class ExpenseEditViewModel @Inject constructor(
             }
         } else {
             viewModelScope.launch {
+                val unitSystem = settingsStore.unitSystem.first()
                 val vehicle = vehicleRepo.observe(vehicleId).first()
                 if (vehicle != null && odometer.isEmpty()) {
-                    odometer = vehicle.odometer.toString()
+                    odometer = if (unitSystem == UnitSystem.US) {
+                        UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
+                    } else {
+                        vehicle.odometer.toString()
+                    }
                 }
             }
 
@@ -126,12 +140,11 @@ class ExpenseEditViewModel @Inject constructor(
     fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
     fun clearWarning() { warningMessage = null }
 
-    fun save(context: android.content.Context, onDone: () -> Unit) {
+    fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
         val amountDouble = amount.toDoubleOrNull() ?: 0.0
-        val amountCents = (amountDouble * 100).toLong()
-        val odo = odometer.toLongOrNull()
+        val amountCents = (amountDouble * 100).roundToLong()
+        val odoInput = odometer.toDoubleOrNull()
 
-        // Validaciones más estrictas
         if (amount.isEmpty() || amountCents <= 0) {
             error = context.getString(R.string.expense_edit_err_amount)
             return
@@ -144,6 +157,10 @@ class ExpenseEditViewModel @Inject constructor(
             error = context.getString(R.string.expense_edit_err_category)
             return
         }
+
+        val odoKm = if (odoInput != null) {
+            if (unitSystem == UnitSystem.METRIC) odoInput.roundToLong() else UnitConverter.milesToKm(odoInput)
+        } else null
 
         viewModelScope.launch {
             isLoading = true
@@ -158,7 +175,7 @@ class ExpenseEditViewModel @Inject constructor(
                     categoryId = selectedCategory!!.id,
                     amountCents = amountCents,
                     dateEpochDay = existingExpense?.dateEpochDay ?: LocalDate.now().toEpochDay(),
-                    odometer = odo,
+                    odometer = odoKm,
                     description = description.takeIf { it.isNotBlank() }
                 )
 
@@ -183,7 +200,6 @@ class ExpenseEditViewModel @Inject constructor(
                                 bytes = fileSize
                             )
                         } else {
-                            // Fallo silencioso solucionado: avisamos al usuario
                             warningMessage = "El recibo no se pudo procesar, pero el gasto fue guardado."
                         }
                     }
@@ -195,8 +211,8 @@ class ExpenseEditViewModel @Inject constructor(
                     goalRepo.markCompleted(goalId, finalExpenseId)
                 }
 
-                if (odo != null && odo > 0) {
-                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
+                if (odoKm != null && odoKm > 0) {
+                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odoKm)
                 }
 
                 hasUnsavedChanges = false
@@ -219,6 +235,7 @@ fun ExpenseEditScreen(
     onDone: () -> Unit,
     vm: ExpenseEditViewModel = hiltViewModel()
 ) {
+    val config = LocalAppConfig.current
     val categories by vm.categories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -259,6 +276,8 @@ fun ExpenseEditScreen(
             }
         )
     }
+
+    val unitLabel = if (config.unitSystem == UnitSystem.METRIC) "km" else "mi"
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -309,6 +328,7 @@ fun ExpenseEditScreen(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
                 label = { Text(stringResource(R.string.expense_edit_amount)) },
+                suffix = { Text(config.currencyCode) },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next
@@ -327,6 +347,7 @@ fun ExpenseEditScreen(
                 value = vm.odometer,
                 onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.expense_edit_odometer)) },
+                suffix = { Text(unitLabel) },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Next
@@ -365,7 +386,7 @@ fun ExpenseEditScreen(
             vm.error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
             Button(
-                onClick = { vm.save(context, onDone) },
+                onClick = { vm.save(context, config.unitSystem, onDone) },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {

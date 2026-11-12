@@ -12,29 +12,47 @@ import javax.inject.Singleton
 abstract class RepositoryModule {
 
     @Binds @Singleton
-    abstract fun bindVehicleRepository(impl: VehicleRepositoryImpl): VehicleRepository
+    abstract fun bindVehicleRepository(
+        impl: VehicleRepositoryImpl
+    ): VehicleRepository
 
     @Binds @Singleton
-    abstract fun bindExpenseRepository(impl: ExpenseRepositoryImpl): ExpenseRepository
+    abstract fun bindExpenseRepository(
+        impl: ExpenseRepositoryImpl
+    ): ExpenseRepository
 
     @Binds @Singleton
-    abstract fun bindDocumentRepository(impl: DocumentRepositoryImpl): DocumentRepository
+    abstract fun bindDocumentRepository(
+        impl: DocumentRepositoryImpl
+    ): DocumentRepository
 
     @Binds @Singleton
-    abstract fun bindAttachmentRepository(impl: AttachmentRepositoryImpl): AttachmentRepository
+    abstract fun bindAttachmentRepository(
+        impl: AttachmentRepositoryImpl
+    ): AttachmentRepository
 
     @Binds @Singleton
-    abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
+    abstract fun bindCategoryRepository(
+        impl: CategoryRepositoryImpl
+    ): CategoryRepository
 
     @Binds @Singleton
-    abstract fun bindFuelRepository(impl: FuelRepositoryImpl): FuelRepository
+    abstract fun bindFuelRepository(
+        impl: FuelRepositoryImpl
+    ): FuelRepository
 
     @Binds @Singleton
-    abstract fun bindScheduleRepository(impl: ScheduleRepositoryImpl): ScheduleRepository
+    abstract fun bindScheduleRepository(
+        impl: ScheduleRepositoryImpl
+    ): ScheduleRepository
 
     @Binds @Singleton
-    abstract fun bindReminderRepository(impl: ReminderRepositoryImpl): ReminderRepository
+    abstract fun bindReminderRepository(
+        impl: ReminderRepositoryImpl
+    ): ReminderRepository
 
     @Binds @Singleton
-    abstract fun bindGoalRepository(impl: GoalRepositoryImpl): GoalRepository
+    abstract fun bindGoalRepository(
+        impl: GoalRepositoryImpl
+    ): GoalRepository
 }

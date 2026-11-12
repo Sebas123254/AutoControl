@@ -12,6 +12,9 @@ interface ScheduleDao {
     @Query("SELECT * FROM maintenance_schedules WHERE vehicleId = :v AND name = :name AND active = 1 LIMIT 1")
     suspend fun getActiveByName(v: String, name: String): MaintenanceScheduleEntity?
 
+    @Query("DELETE FROM maintenance_schedules WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Upsert suspend fun upsert(s: MaintenanceScheduleEntity)
 
     // --- NUEVOS PARA BACKUP ---

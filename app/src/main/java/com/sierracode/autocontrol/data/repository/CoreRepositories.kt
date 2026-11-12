@@ -20,7 +20,6 @@ interface AttachmentRepository {
 class AttachmentRepositoryImpl @Inject constructor(private val dao: AttachmentDao) : AttachmentRepository {
     override fun observeByOwner(type: String, id: String) = dao.observeByOwner(type, id)
     override suspend fun getForOwner(type: String, id: String) = dao.getForOwner(type, id)
-    // AQUÍ ESTÁ EL ARREGLO: Usar llaves { } para que devuelva Unit
     override suspend fun upsert(attachment: AttachmentEntity) { dao.upsert(attachment) }
     override suspend fun deleteById(id: String) = dao.deleteById(id)
     override suspend fun getAllOnce() = dao.getAllOnce()
@@ -62,6 +61,7 @@ interface ScheduleRepository {
     fun observeActive(vehicleId: String): Flow<List<MaintenanceScheduleEntity>>
     suspend fun getActiveByName(vehicleId: String, name: String): MaintenanceScheduleEntity?
     suspend fun upsert(schedule: MaintenanceScheduleEntity)
+    suspend fun delete(scheduleId: String)
     suspend fun getAllOnce(): List<MaintenanceScheduleEntity>
     suspend fun deleteAll()
 }
@@ -71,6 +71,7 @@ class ScheduleRepositoryImpl @Inject constructor(private val dao: ScheduleDao) :
     override fun observeActive(vehicleId: String) = dao.observeActive(vehicleId)
     override suspend fun getActiveByName(vehicleId: String, name: String) = dao.getActiveByName(vehicleId, name)
     override suspend fun upsert(schedule: MaintenanceScheduleEntity) = dao.upsert(schedule)
+    override suspend fun delete(scheduleId: String) = dao.deleteById(scheduleId)
     override suspend fun getAllOnce() = dao.getAllOnce()
     override suspend fun deleteAll() = dao.deleteAll()
 }
