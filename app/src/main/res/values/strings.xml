@@ -190,4 +190,20 @@
     <string name="goals_buy_action">Registrar Compra y Gasto</string>
     <string name="goals_diff_over">Gastaste %1$s más de lo estimado</string>
     <string name="goals_diff_saved">¡Ahorraste %1$s!</string>
+
+    <!-- Prevención de pérdida de datos -->
+    <string name="discard_changes_title">Descartar cambios</string>
+    <string name="discard_changes_msg">¿Estás seguro de que quieres salir? Perderás los datos que ingresaste.</string>
+    <string name="action_discard">Descartar</string>
+    <string name="action_keep_editing">Seguir editando</string>
+
+    <!-- Accesibilidad -->
+    <string name="priority_alta">Prioridad Alta</string>
+    <string name="priority_media">Prioridad Media</string>
+    <string name="priority_baja">Prioridad Baja</string>
+
+    <string name="cd_maint_overdue">Mantenimiento vencido</string>
+    <string name="cd_maint_soon">Mantenimiento próximo</string>
+    <string name="cd_maint_ok">Mantenimiento al día</string>
+    <string name="cd_maint_unknown">Mantenimiento sin datos</string>
 </resources>

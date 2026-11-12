@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -29,6 +30,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -41,6 +44,7 @@ import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.ui.components.EmptyState
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.repository.AttachmentRepository
@@ -68,11 +72,9 @@ class ExpensesViewModel @Inject constructor(
         if (id == null) flowOf(emptyList()) else expenseRepo.observeByVehicle(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // Estados para el diálogo de detalles
     var selectedExpense by mutableStateOf<ExpenseEntity?>(null)
     var selectedAttachment by mutableStateOf<AttachmentEntity?>(null)
 
-    // Estados para la selección múltiple
     var isSelectionMode by mutableStateOf(false)
         private set
     var selectedIds by mutableStateOf<Set<String>>(emptySet())
@@ -98,7 +100,6 @@ class ExpensesViewModel @Inject constructor(
         selectedAttachment = null
     }
 
-    // --- Lógica de Selección Múltiple ---
     fun toggleSelection(id: String) {
         selectedIds = if (selectedIds.contains(id)) {
             val newSet = selectedIds - id
@@ -164,12 +165,10 @@ fun ExpensesScreen(
     val deletedMessageTemplate = stringResource(R.string.expenses_deleted_success)
     val errorMessageText = stringResource(R.string.expenses_delete_error)
 
-    // Manejo del botón Atrás del sistema
     BackHandler(enabled = vm.isSelectionMode) {
         vm.clearSelection()
     }
 
-    // Efecto para mostrar Snackbar de éxito o error
     LaunchedEffect(vm.errorMessage) {
         vm.errorMessage?.let {
             snackbarHostState.showSnackbar(errorMessageText)
@@ -186,7 +185,6 @@ fun ExpensesScreen(
                     onClick = {
                         showDeleteDialog = false
                         vm.deleteSelected { count ->
-                            // Usamos corrutina para el Snackbar
                             kotlinx.coroutines.MainScope().launch {
                                 snackbarHostState.showSnackbar(deletedMessageTemplate.format(count))
                             }
@@ -227,7 +225,7 @@ fun ExpensesScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(250.dp)
+                                .aspectRatio(4f / 3f) // En lugar de height fija, usamos proporción
                                 .padding(top = 8.dp)
                                 .clickable { showFullScreenImage = true }
                         ) {
@@ -306,9 +304,12 @@ fun ExpensesScreen(
         }
     ) { padding ->
         if (expenses.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.expenses_empty), style = MaterialTheme.typography.bodyLarge)
-            }
+            EmptyState(
+                icon = Icons.Default.Receipt,
+                title = stringResource(R.string.expenses_empty),
+                description = "Registra tu primer gasto para comenzar a llevar el control de tu vehículo.",
+                modifier = Modifier.padding(padding)
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -342,13 +343,20 @@ fun ExpenseRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val semanticsModifier = if (isSelectionMode) {
+        Modifier.semantics {
+            contentDescription = if (isSelected) "Seleccionado" else "No seleccionado"
+        }
+    } else Modifier
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
-            ),
+            )
+            .then(semanticsModifier),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
         )
@@ -387,7 +395,6 @@ fun ExpenseRow(
     }
 }
 
-// ... El FullScreenImageDialog se mantiene exactamente igual ...
 @Composable
 fun FullScreenImageDialog(imageUri: Uri, onDismiss: () -> Unit) {
     val context = LocalContext.current

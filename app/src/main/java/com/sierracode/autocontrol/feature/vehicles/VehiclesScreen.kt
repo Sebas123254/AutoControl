@@ -91,18 +91,22 @@ fun VehiclesScreen(
     onVehicleClick: (String) -> Unit,
     onEditClick: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    autoNavigateToLast: Boolean = true, // <-- NUEVO
+    onNavigated: () -> Unit = {}, // <-- NUEVO
     vm: VehiclesViewModel = hiltViewModel()
 ) {
     val vehicles by vm.vehicles.collectAsState()
     val isPro by vm.isPro.collectAsState()
     val context = LocalContext.current
 
+    // --- REDIRECCIÓN CONTROLADA ---
     var hasRedirected by remember { mutableStateOf(false) }
-    LaunchedEffect(vehicles) {
-        if (!hasRedirected && vehicles.isNotEmpty()) {
+    LaunchedEffect(vehicles, autoNavigateToLast) {
+        if (autoNavigateToLast && !hasRedirected && vehicles.isNotEmpty()) {
             val activeId = vm.getActiveVehicleId()
             if (activeId != null) {
                 hasRedirected = true
+                onNavigated() // Le avisamos al NavHost que ya nos movimos
                 onVehicleClick(activeId)
             }
         }

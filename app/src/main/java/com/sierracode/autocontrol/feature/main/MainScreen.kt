@@ -1,5 +1,6 @@
 package com.sierracode.autocontrol.feature.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -39,7 +40,7 @@ fun MainScreen(
     onOpenReminders: () -> Unit,
     onAddDocument: () -> Unit,
     onAddGoal: () -> Unit,
-    onGoalClick: (String) -> Unit // <-- NUEVO PARÁMETRO
+    onGoalClick: (String) -> Unit
 ) {
     val navController = rememberNavController()
     val items = listOf(
@@ -49,6 +50,24 @@ fun MainScreen(
         BottomNavItem.Stats,
         BottomNavItem.Documents
     )
+
+    // Lógica del botón Atrás para las pestañas inferiores
+    BackHandler(enabled = true) {
+        val currentRoute = navController.currentBackStackEntry?.destination?.route
+        val dashboardRoute = BottomNavItem.Dashboard.route.replace("{vehicleId}", vehicleId)
+
+        if (currentRoute == dashboardRoute) {
+            // Si está en el Dashboard, sale al listado de vehículos
+            onBackToVehicles()
+        } else {
+            // Si está en otra pestaña, regresa al Dashboard
+            navController.navigate(dashboardRoute) {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -108,7 +127,7 @@ fun MainScreen(
                     vehicleId = vId,
                     onBack = { /* No hace falta */ },
                     onAddClick = onAddGoal,
-                    onGoalClick = onGoalClick // <-- Lo conectamos
+                    onGoalClick = onGoalClick
                 )
             }
             composable(BottomNavItem.Stats.route) { backStackEntry ->

@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.InternalSerializationApi::class)
+
 package com.sierracode.autocontrol.data.backup
 
 import androidx.room.withTransaction
@@ -28,7 +30,8 @@ class BackupManager @Inject constructor(
                 documents = db.documentDao().getAllOnce().map { it.toDto() },
                 attachments = db.attachmentDao().getAllOnce().map { it.toDto() },
                 maintenanceSchedules = db.scheduleDao().getAllOnce().map { it.toDto() },
-                reminders = db.reminderDao().getAllOnce().map { it.toDto() }
+                reminders = db.reminderDao().getAllOnce().map { it.toDto() },
+                goals = db.goalDao().getAllOnce().map { it.toDto() }
             )
             val jsonString = json.encodeToString(BackupData.serializer(), backup)
             outputStream.write(jsonString.toByteArray())
@@ -42,12 +45,12 @@ class BackupManager @Inject constructor(
                 val jsonString = inputStream.bufferedReader().use { it.readText() }
                 val backup = json.decodeFromString(BackupData.serializer(), jsonString)
 
-                if (backup.schemaVersion > 2) {
+                if (backup.schemaVersion > 3) {
                     return@withContext Result.failure(Exception("Versión de respaldo no soportada."))
                 }
 
                 db.withTransaction {
-                    // 1. Borrar todo (orden inverso a FKs)
+                    db.goalDao().deleteAll()
                     db.reminderDao().deleteAll()
                     db.attachmentDao().deleteAll()
                     db.scheduleDao().deleteAll()
@@ -57,16 +60,15 @@ class BackupManager @Inject constructor(
                     db.expenseDao().deleteAll()
                     db.vehicleDao().deleteAll()
 
-                    // 2. Insertar de nuevo (orden de dependencias)
                     backup.vehicles.forEach { db.vehicleDao().upsert(it.toEntity()) }
                     backup.expenses.forEach { db.expenseDao().upsert(it.toEntity()) }
                     backup.fuelDetails.forEach { db.fuelDao().upsert(it.toEntity()) }
-                    // Los schedules deben ir antes que los maintenance_details por la FK
                     backup.maintenanceSchedules.forEach { db.scheduleDao().upsert(it.toEntity()) }
                     backup.maintenanceDetails.forEach { db.maintenanceDao().upsert(it.toEntity()) }
                     backup.documents.forEach { db.documentDao().upsert(it.toEntity()) }
                     backup.attachments.forEach { db.attachmentDao().upsert(it.toEntity()) }
                     backup.reminders.forEach { db.reminderDao().upsert(it.toEntity()) }
+                    backup.goals.forEach { db.goalDao().upsert(it.toEntity()) }
                 }
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -85,6 +87,7 @@ private fun DocumentEntity.toDto() = DocumentDto(id, vehicleId, type, name, issu
 private fun AttachmentEntity.toDto() = AttachmentDto(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
 private fun MaintenanceScheduleEntity.toDto() = MaintenanceScheduleDto(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
 private fun ReminderEntity.toDto() = ReminderDto(id, vehicleId, sourceType, sourceId, title, body, triggerAtEpochMillis, enabled, lastNotifiedAt)
+private fun GoalEntity.toDto() = GoalDto(id, vehicleId, title, notes, estimatedCents, estimatedMaxCents, priority, targetDateEpochDay, status, categoryId, createdAt, completedAt, linkedExpenseId)
 
 // --- Conversiones DTO -> Entity ---
 private fun VehicleDto.toEntity() = VehicleEntity(id, brand, model, year, trim, color, plates, vin, fuelType, tankLiters, odometer, photoUri, purchaseDateEpochDay, purchasePriceCents, notes, createdAt, updatedAt)
@@ -95,3 +98,4 @@ private fun DocumentDto.toEntity() = DocumentEntity(id, vehicleId, type, name, i
 private fun AttachmentDto.toEntity() = AttachmentEntity(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
 private fun MaintenanceScheduleDto.toEntity() = MaintenanceScheduleEntity(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
 private fun ReminderDto.toEntity() = ReminderEntity(id, vehicleId, sourceType, sourceId, title, body, triggerAtEpochMillis, enabled, lastNotifiedAt)
+private fun GoalDto.toEntity() = GoalEntity(id, vehicleId, title, notes, estimatedCents, estimatedMaxCents, priority, targetDateEpochDay, status, categoryId, createdAt, completedAt, linkedExpenseId)

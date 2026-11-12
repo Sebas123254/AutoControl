@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.draw.clip
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -73,7 +74,6 @@ sealed class Route(val path: String) {
         fun build(vehicleId: String, goalId: String? = null) = "goal_edit/$vehicleId?goalId=${goalId ?: ""}"
     }
 
-    // --- NUEVA RUTA PARA EL DETALLE ---
     data object GoalDetail : Route("goal_detail/{vehicleId}/{goalId}") {
         fun build(vehicleId: String, goalId: String) = "goal_detail/$vehicleId/$goalId"
     }
@@ -100,6 +100,9 @@ fun AppNavHost(nav: NavHostController) {
         minTimePassed = true
     }
 
+    // NUEVO: Bandera para controlar la redirección automática inicial
+    var autoNavigateToLastVehicle by rememberSaveable { mutableStateOf(true) }
+
     if (onboarded == null || !minTimePassed) {
         SplashScreen()
     } else {
@@ -113,6 +116,8 @@ fun AppNavHost(nav: NavHostController) {
 
             composable(Route.Vehicles.path) {
                 VehiclesScreen(
+                    autoNavigateToLast = autoNavigateToLastVehicle,
+                    onNavigated = { autoNavigateToLastVehicle = false }, // Se apaga tras el primer salto
                     onAddClick = { nav.navigate(Route.VehicleEdit.build(null)) },
                     onVehicleClick = { id -> nav.navigate(Route.Main.build(id)) },
                     onEditClick = { id -> nav.navigate(Route.VehicleEdit.build(id)) },
@@ -142,7 +147,7 @@ fun AppNavHost(nav: NavHostController) {
                     onEditDocument = { docId -> nav.navigate(Route.DocumentEdit.build(id, docId)) },
                     onOpenReminders = { nav.navigate(Route.Reminders.build(id)) },
                     onAddGoal = { nav.navigate(Route.GoalEdit.build(id)) },
-                    onGoalClick = { goalId -> nav.navigate(Route.GoalDetail.build(id, goalId)) } // Ahora va al Detalle
+                    onGoalClick = { goalId -> nav.navigate(Route.GoalDetail.build(id, goalId)) }
                 )
             }
 
@@ -178,7 +183,6 @@ fun AppNavHost(nav: NavHostController) {
                 GoalEditScreen(onDone = { nav.popBackStack() })
             }
 
-            // --- NUEVO COMPOSABLE DE DETALLE ---
             composable(Route.GoalDetail.path) { back ->
                 val vId = back.arguments!!.getString("vehicleId")!!
                 val gId = back.arguments!!.getString("goalId")!!

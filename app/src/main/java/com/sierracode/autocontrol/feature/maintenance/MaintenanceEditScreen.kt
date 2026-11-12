@@ -1,11 +1,13 @@
 package com.sierracode.autocontrol.feature.maintenance
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,9 +16,12 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,6 +39,7 @@ import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
 import com.sierracode.autocontrol.data.repository.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -62,8 +68,28 @@ class MaintenanceEditViewModel @Inject constructor(
     var nextOdometer by mutableStateOf("")
     var selectedImageUri by mutableStateOf<Uri?>(null)
 
+    var hasUnsavedChanges by mutableStateOf(false)
+        private set
+
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+
+    init {
+        // PRE-LLENAR EL ODÓMETRO CON EL VALOR ACTUAL DEL VEHÍCULO
+        viewModelScope.launch {
+            val vehicle = vehicleRepo.observe(vehicleId).first()
+            if (vehicle != null && odometer.isEmpty()) {
+                odometer = vehicle.odometer.toString()
+            }
+        }
+    }
+
+    fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
+    fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true }
+    fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
+    fun updateWorkshop(newWorkshop: String) { workshop = newWorkshop; hasUnsavedChanges = true }
+    fun updateNextOdometer(newNextOdo: String) { nextOdometer = newNextOdo; hasUnsavedChanges = true }
+    fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
 
     fun save(context: android.content.Context, onDone: () -> Unit) {
         val amt = amount.toDoubleOrNull() ?: 0.0
@@ -141,6 +167,7 @@ class MaintenanceEditViewModel @Inject constructor(
                     vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
                 }
 
+                hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
@@ -160,7 +187,9 @@ fun MaintenanceEditScreen(
 ) {
     val categories by vm.maintCategories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(categories) {
         if (vm.selectedCategory == null && categories.isNotEmpty()) {
@@ -171,7 +200,28 @@ fun MaintenanceEditScreen(
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) vm.selectedImageUri = uri
+        if (uri != null) vm.updateImage(uri)
+    }
+
+    BackHandler(enabled = vm.hasUnsavedChanges) {
+        showDiscardDialog = true
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text(stringResource(R.string.discard_changes_title)) },
+            text = { Text(stringResource(R.string.discard_changes_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onDone()
+                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
+        )
     }
 
     Scaffold(
@@ -179,7 +229,9 @@ fun MaintenanceEditScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.maint_edit_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onDone) {
+                    IconButton(onClick = {
+                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
@@ -208,7 +260,7 @@ fun MaintenanceEditScreen(
                         DropdownMenuItem(
                             text = { Text(category.name) },
                             onClick = {
-                                vm.selectedCategory = category
+                                vm.updateCategory(category)
                                 expanded = false
                             }
                         )
@@ -218,32 +270,46 @@ fun MaintenanceEditScreen(
 
             OutlinedTextField(
                 value = vm.amount,
-                onValueChange = { vm.amount = it },
+                onValueChange = { vm.updateAmount(it) },
                 label = { Text(stringResource(R.string.maint_edit_cost)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.odometer,
-                onValueChange = { vm.odometer = it },
+                onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.fuel_edit_odometer)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.workshop,
-                onValueChange = { vm.workshop = it },
+                onValueChange = { vm.updateWorkshop(it) },
                 label = { Text(stringResource(R.string.maint_edit_workshop)) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.nextOdometer,
-                onValueChange = { vm.nextOdometer = it },
+                onValueChange = { vm.updateNextOdometer(it) },
                 label = { Text(stringResource(R.string.maint_edit_next_odo)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth()
             )
 

@@ -1,11 +1,13 @@
 package com.sierracode.autocontrol.feature.expenses
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,9 +17,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,13 +49,13 @@ class ExpenseEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
     private val attachmentRepo: AttachmentRepository,
-    private val goalRepo: GoalRepository, // <-- NUEVO
+    private val goalRepo: GoalRepository,
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
     private val expenseId: String? = savedStateHandle.get<String>("expenseId")?.takeIf { it.isNotBlank() }
-    private val goalId: String? = savedStateHandle.get<String>("goalId")?.takeIf { it.isNotBlank() } // <-- NUEVO
+    private val goalId: String? = savedStateHandle.get<String>("goalId")?.takeIf { it.isNotBlank() }
 
     val categories = categoryRepo.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -61,8 +66,18 @@ class ExpenseEditViewModel @Inject constructor(
     var selectedCategory by mutableStateOf<CategoryEntity?>(null)
     var selectedImageUri by mutableStateOf<Uri?>(null)
 
+    var hasUnsavedChanges by mutableStateOf(false)
+        private set
+
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+
+    // Para Snackbar de fallo de imagen
+    var warningMessage by mutableStateOf<String?>(null)
+        private set
+
+    // Validación en línea
+    val isAmountError = amount.isNotEmpty() && (amount.toDoubleOrNull() ?: 0.0) <= 0.0
 
     init {
         if (expenseId != null) {
@@ -81,28 +96,48 @@ class ExpenseEditViewModel @Inject constructor(
                     }
                 }
             }
-        } else if (goalId != null) {
-            // Prellenar si venimos desde la pantalla de Objetivos
+        } else {
             viewModelScope.launch {
-                goalRepo.get(goalId)?.let { goal ->
-                    amount = (goal.estimatedCents / 100.0).toString()
-                    description = goal.title
-                    if (goal.categoryId != null) {
-                        val catList = categories.first { it.isNotEmpty() }
-                        selectedCategory = catList.find { it.id == goal.categoryId }
+                val vehicle = vehicleRepo.observe(vehicleId).first()
+                if (vehicle != null && odometer.isEmpty()) {
+                    odometer = vehicle.odometer.toString()
+                }
+            }
+
+            if (goalId != null) {
+                viewModelScope.launch {
+                    goalRepo.get(goalId)?.let { goal ->
+                        amount = (goal.estimatedCents / 100.0).toString()
+                        description = goal.title
+                        if (goal.categoryId != null) {
+                            val catList = categories.first { it.isNotEmpty() }
+                            selectedCategory = catList.find { it.id == goal.categoryId }
+                        }
                     }
                 }
             }
         }
     }
 
+    fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true; error = null }
+    fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
+    fun updateDescription(newDesc: String) { description = newDesc; hasUnsavedChanges = true }
+    fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true; error = null }
+    fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
+    fun clearWarning() { warningMessage = null }
+
     fun save(context: android.content.Context, onDone: () -> Unit) {
         val amountDouble = amount.toDoubleOrNull() ?: 0.0
         val amountCents = (amountDouble * 100).toLong()
         val odo = odometer.toLongOrNull()
 
+        // Validaciones más estrictas
         if (amount.isEmpty() || amountCents <= 0) {
             error = context.getString(R.string.expense_edit_err_amount)
+            return
+        }
+        if (amountDouble > 1_000_000.0) {
+            error = "El monto excede el límite permitido."
             return
         }
         if (selectedCategory == null) {
@@ -147,13 +182,15 @@ class ExpenseEditViewModel @Inject constructor(
                                 mimeType = "image/jpeg",
                                 bytes = fileSize
                             )
+                        } else {
+                            // Fallo silencioso solucionado: avisamos al usuario
+                            warningMessage = "El recibo no se pudo procesar, pero el gasto fue guardado."
                         }
                     }
                 }
 
                 expenseRepo.saveWithDetails(expense, null, null, attachment)
 
-                // SI VENIMOS DE UN OBJETIVO, LO MARCAMOS COMO COMPRADO
                 if (goalId != null && expenseId == null) {
                     goalRepo.markCompleted(goalId, finalExpenseId)
                 }
@@ -162,6 +199,7 @@ class ExpenseEditViewModel @Inject constructor(
                     vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
                 }
 
+                hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
@@ -177,28 +215,60 @@ class ExpenseEditViewModel @Inject constructor(
 fun ExpenseEditScreen(
     vehicleId: String,
     expenseId: String?,
-    goalId: String? = null, // <-- NUEVO PARÁMETRO
+    goalId: String? = null,
     onDone: () -> Unit,
     vm: ExpenseEditViewModel = hiltViewModel()
 ) {
     val categories by vm.categories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) {
-            vm.selectedImageUri = uri
+        if (uri != null) vm.updateImage(uri)
+    }
+
+    LaunchedEffect(vm.warningMessage) {
+        vm.warningMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.clearWarning()
         }
     }
 
+    BackHandler(enabled = vm.hasUnsavedChanges) {
+        showDiscardDialog = true
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text(stringResource(R.string.discard_changes_title)) },
+            text = { Text(stringResource(R.string.discard_changes_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onDone()
+                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
+        )
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(if (expenseId == null) R.string.expense_edit_new else R.string.expense_edit_update)) },
                 navigationIcon = {
-                    IconButton(onClick = onDone) {
+                    IconButton(onClick = {
+                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
@@ -227,7 +297,7 @@ fun ExpenseEditScreen(
                         DropdownMenuItem(
                             text = { Text(category.name) },
                             onClick = {
-                                vm.selectedCategory = category
+                                vm.updateCategory(category)
                                 expanded = false
                             }
                         )
@@ -237,24 +307,40 @@ fun ExpenseEditScreen(
 
             OutlinedTextField(
                 value = vm.amount,
-                onValueChange = { vm.amount = it },
+                onValueChange = { vm.updateAmount(it) },
                 label = { Text(stringResource(R.string.expense_edit_amount)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                isError = vm.isAmountError,
+                supportingText = {
+                    if (vm.isAmountError) {
+                        Text("El monto debe ser mayor a 0")
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.odometer,
-                onValueChange = { vm.odometer = it },
+                onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.expense_edit_odometer)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.description,
-                onValueChange = { vm.description = it },
+                onValueChange = { vm.updateDescription(it) },
                 label = { Text(stringResource(R.string.expense_edit_desc)) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth()
             )
 

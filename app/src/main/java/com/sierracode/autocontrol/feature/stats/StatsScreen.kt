@@ -16,10 +16,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -37,6 +40,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
@@ -55,13 +59,16 @@ class StatsViewModel @Inject constructor(
 
     val monthlyStats = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else expenseRepo.observeByVehicle(id).map { expenses ->
-            val formatter = DateTimeFormatter.ofPattern("MMM", Locale("es", "MX"))
+            // Agrupamos por YearMonth para no mezclar años
+            val formatter = DateTimeFormatter.ofPattern("MMM yy", Locale("es", "MX"))
             expenses.groupBy {
-                val date = LocalDate.ofEpochDay(it.dateEpochDay)
-                date.format(formatter).replaceFirstChar { char -> char.titlecase(Locale.getDefault()) }
-            }.map { (month, list) ->
-                MonthlyStat(month, list.sumOf { it.amountCents })
-            }.reversed()
+                YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay))
+            }.toSortedMap().map { (yearMonth, list) ->
+                MonthlyStat(
+                    monthLabel = yearMonth.format(formatter).replaceFirstChar { it.titlecase(Locale.getDefault()) },
+                    totalCents = list.sumOf { it.amountCents }
+                )
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -75,7 +82,7 @@ class StatsViewModel @Inject constructor(
         if (grandTotal == 0L) return@combine emptyList()
 
         totals.mapNotNull { row ->
-            val catName = categories.find { it.id == row.categoryId }?.name ?: "Otros" // Will use fallback in UI
+            val catName = categories.find { it.id == row.categoryId }?.name ?: "Otros"
             CategoryStat(
                 name = catName,
                 totalCents = row.totalCents,
@@ -193,10 +200,14 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
     val minVal = data.minOfOrNull { it.totalCents }?.toFloat() ?: 0f
     val range = max(1f, maxVal - minVal)
 
-    Canvas(modifier = Modifier
-        .fillMaxWidth()
-        .height(220.dp)
-        .padding(8.dp)
+    // Color del texto adaptado al tema (oscuro/claro)
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp) // Aumentamos un poco la altura para que quepan las etiquetas
+            .padding(top = 16.dp, end = 16.dp, start = 16.dp, bottom = 32.dp)
     ) {
         if (data.isEmpty()) return@Canvas
 
@@ -227,9 +238,22 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
             style = Stroke(width = 6f, cap = StrokeCap.Round)
         )
 
-        points.forEach { point ->
+        // Dibujar puntos y etiquetas
+        points.forEachIndexed { index, point ->
             drawCircle(color = lineColor, radius = 8f, center = point)
             drawCircle(color = Color.White, radius = 4f, center = point)
+
+            // Dibujar la etiqueta del mes (eje X)
+            drawContext.canvas.nativeCanvas.drawText(
+                data[index].monthLabel,
+                point.x,
+                size.height + 24.dp.toPx(),
+                android.graphics.Paint().apply {
+                    color = textColor.toArgb()
+                    textSize = 12.sp.toPx()
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+            )
         }
     }
 }

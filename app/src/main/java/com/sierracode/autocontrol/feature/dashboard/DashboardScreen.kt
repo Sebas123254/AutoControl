@@ -47,6 +47,11 @@ data class EvaluatedSchedule(
     val remainingDays: Long?
 )
 
+data class FuelStats(
+    val avgKmL: Double?,
+    val hint: String?
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -113,20 +118,28 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val avgKmPerLiter = vehicleIdFlow.flatMapLatest { id ->
+    val fuelStats = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(null) else fuelRepo.observeFuel(id).map { fuelList ->
-            val points = fuelList.reversed().mapNotNull { f ->
-                if (f.odometer != null) {
-                    FuelPoint(
-                        odometer = f.odometer,
-                        liters = f.litersMilli / 1000.0,
-                        fullTank = f.fullTank,
-                        amountCents = f.amountCents,
-                        epochDay = f.dateEpochDay
-                    )
-                } else null
+            val points = fuelList.reversed().map { f ->
+                FuelPoint(
+                    odometer = f.odometer,
+                    liters = f.litersMilli / 1000.0,
+                    fullTank = f.fullTank,
+                    amountCents = f.amountCents,
+                    epochDay = f.dateEpochDay
+                )
             }
-            summarizeFuel(points).avgKmPerLiter
+
+            val summary = summarizeFuel(points)
+
+            val hint = when {
+                points.isEmpty() -> "Registra tu primera carga de gasolina."
+                points.any { it.odometer == null } -> "Falta el odómetro en algunas cargas. Ingrésalo para calcular."
+                points.count { it.fullTank } < 2 -> "Necesitas al menos 2 cargas de 'Tanque lleno'."
+                summary.avgKmPerLiter == null -> "Asegúrate de que las cargas con tanque lleno sean consecutivas."
+                else -> null
+            }
+            FuelStats(summary.avgKmPerLiter, hint)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -152,7 +165,7 @@ fun DashboardScreen(
 
     val vehicle by vm.vehicle.collectAsState()
     val totalSpent by vm.totalSpent.collectAsState()
-    val avgKmL by vm.avgKmPerLiter.collectAsState()
+    val fuelStats by vm.fuelStats.collectAsState()
     val costMetrics by vm.costMetrics.collectAsState()
     val schedules by vm.schedules.collectAsState()
 
@@ -209,6 +222,12 @@ fun DashboardScreen(
                             Urgency.OK -> MaterialTheme.colorScheme.surfaceVariant
                             Urgency.UNKNOWN -> MaterialTheme.colorScheme.surfaceVariant
                         }
+                        val cdText = when (schedule.urgency) {
+                            Urgency.OVERDUE -> stringResource(R.string.cd_maint_overdue)
+                            Urgency.SOON -> stringResource(R.string.cd_maint_soon)
+                            Urgency.OK -> stringResource(R.string.cd_maint_ok)
+                            Urgency.UNKNOWN -> stringResource(R.string.cd_maint_unknown)
+                        }
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = color)
@@ -216,7 +235,7 @@ fun DashboardScreen(
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     Icons.Default.Warning,
-                                    contentDescription = null,
+                                    contentDescription = cdText, // MEJORA DE ACCESIBILIDAD
                                     tint = if (schedule.urgency == Urgency.OK) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(Modifier.width(16.dp))
@@ -276,12 +295,13 @@ fun DashboardScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(stringResource(R.string.dashboard_avg_performance), style = MaterialTheme.typography.labelMedium)
                         Text(
-                            text = if (avgKmL != null) formatDouble(avgKmL, 2, " km/L") else stringResource(R.string.dashboard_no_data),
+                            text = if (fuelStats?.avgKmL != null) formatDouble(fuelStats!!.avgKmL, 2, " km/L") else stringResource(R.string.dashboard_no_data),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
-                        if (avgKmL == null) {
-                            Text(stringResource(R.string.dashboard_full_tank_hint), style = MaterialTheme.typography.bodySmall)
+                        if (fuelStats?.hint != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(fuelStats!!.hint!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

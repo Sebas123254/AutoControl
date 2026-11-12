@@ -1,11 +1,13 @@
 package com.sierracode.autocontrol.feature.fuel
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,9 +17,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -31,9 +36,12 @@ import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.local.entity.FuelDetailEntity
-import com.sierracode.autocontrol.data.repository.*
+import com.sierracode.autocontrol.data.repository.CategoryRepository
+import com.sierracode.autocontrol.data.repository.ExpenseRepository
+import com.sierracode.autocontrol.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -63,10 +71,37 @@ class FuelEditViewModel @Inject constructor(
     var isFullTank by mutableStateOf(true)
     var selectedImageUri by mutableStateOf<Uri?>(null)
 
+    var hasUnsavedChanges by mutableStateOf(false)
+        private set
+
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+    var warningMessage by mutableStateOf<String?>(null)
+        private set
 
-    fun onLitersOrPriceChange() {
+    // Validación en línea
+    val isLitersError = liters.isNotEmpty() && (liters.toDoubleOrNull() ?: 0.0) > 200.0
+
+    init {
+        viewModelScope.launch {
+            val vehicle = vehicleRepo.observe(vehicleId).first()
+            if (vehicle != null && odometer.isEmpty()) {
+                odometer = vehicle.odometer.toString()
+            }
+        }
+    }
+
+    fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
+    fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
+    fun updateLiters(newLiters: String) { liters = newLiters; onLitersOrPriceChange(); hasUnsavedChanges = true; error = null }
+    fun updatePrice(newPrice: String) { pricePerLiter = newPrice; onLitersOrPriceChange(); hasUnsavedChanges = true }
+    fun updateTotal(newTotal: String) { total = newTotal; hasUnsavedChanges = true }
+    fun updateStation(newStation: String) { station = newStation; hasUnsavedChanges = true }
+    fun updateFullTank(isFull: Boolean) { isFullTank = isFull; hasUnsavedChanges = true }
+    fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
+    fun clearWarning() { warningMessage = null }
+
+    private fun onLitersOrPriceChange() {
         val l = liters.toDoubleOrNull()
         val p = pricePerLiter.toDoubleOrNull()
         if (l != null && p != null) {
@@ -82,6 +117,10 @@ class FuelEditViewModel @Inject constructor(
 
         if (t <= 0 || l <= 0) {
             error = context.getString(R.string.fuel_edit_err_valid)
+            return
+        }
+        if (l > 200.0) {
+            error = "El límite máximo es de 200 litros."
             return
         }
         if (selectedCategory == null) {
@@ -126,6 +165,8 @@ class FuelEditViewModel @Inject constructor(
                             mimeType = "image/jpeg",
                             bytes = fileSize
                         )
+                    } else {
+                        warningMessage = "El ticket no se pudo procesar, pero la carga fue guardada."
                     }
                 }
 
@@ -135,6 +176,7 @@ class FuelEditViewModel @Inject constructor(
                     vehicleRepo.bumpOdometerIfHigher(vehicleId, odo)
                 }
 
+                hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
@@ -154,7 +196,10 @@ fun FuelEditScreen(
 ) {
     val categories by vm.fuelCategories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(categories) {
         if (vm.selectedCategory == null && categories.isNotEmpty()) {
@@ -165,15 +210,46 @@ fun FuelEditScreen(
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) vm.selectedImageUri = uri
+        if (uri != null) vm.updateImage(uri)
+    }
+
+    LaunchedEffect(vm.warningMessage) {
+        vm.warningMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.clearWarning()
+        }
+    }
+
+    BackHandler(enabled = vm.hasUnsavedChanges) {
+        showDiscardDialog = true
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text(stringResource(R.string.discard_changes_title)) },
+            text = { Text(stringResource(R.string.discard_changes_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onDone()
+                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
+        )
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.fuel_edit_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onDone) {
+                    IconButton(onClick = {
+                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
@@ -202,7 +278,7 @@ fun FuelEditScreen(
                         DropdownMenuItem(
                             text = { Text(category.name) },
                             onClick = {
-                                vm.selectedCategory = category
+                                vm.updateCategory(category)
                                 expanded = false
                             }
                         )
@@ -212,54 +288,72 @@ fun FuelEditScreen(
 
             OutlinedTextField(
                 value = vm.odometer,
-                onValueChange = { vm.odometer = it },
+                onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.fuel_edit_odometer)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = vm.liters,
-                    onValueChange = {
-                        vm.liters = it
-                        vm.onLitersOrPriceChange()
-                    },
+                    onValueChange = { vm.updateLiters(it) },
                     label = { Text(stringResource(R.string.fuel_edit_liters)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Right) }),
+                    isError = vm.isLitersError,
+                    supportingText = {
+                        if (vm.isLitersError) {
+                            Text("Máximo 200 L")
+                        }
+                    },
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
                     value = vm.pricePerLiter,
-                    onValueChange = {
-                        vm.pricePerLiter = it
-                        vm.onLitersOrPriceChange()
-                    },
+                    onValueChange = { vm.updatePrice(it) },
                     label = { Text(stringResource(R.string.fuel_edit_price)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                     modifier = Modifier.weight(1f)
                 )
             }
 
             OutlinedTextField(
                 value = vm.total,
-                onValueChange = { vm.total = it },
+                onValueChange = { vm.updateTotal(it) },
                 label = { Text(stringResource(R.string.fuel_edit_total)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.station,
-                onValueChange = { vm.station = it },
+                onValueChange = { vm.updateStation(it) },
                 label = { Text(stringResource(R.string.fuel_edit_station)) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(
                     checked = vm.isFullTank,
-                    onCheckedChange = { vm.isFullTank = it }
+                    onCheckedChange = { vm.updateFullTank(it) }
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.fuel_edit_full_tank))

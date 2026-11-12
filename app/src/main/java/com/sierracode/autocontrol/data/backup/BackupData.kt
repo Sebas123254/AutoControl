@@ -1,10 +1,12 @@
+@file:OptIn(kotlinx.serialization.InternalSerializationApi::class)
+
 package com.sierracode.autocontrol.data.backup
 
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class BackupData(
-    val schemaVersion: Int = 2, // <-- Subimos a 2
+    val schemaVersion: Int = 3,
     val appVersion: String = "1.0.0",
     val exportedAt: Long,
     val vehicles: List<VehicleDto>,
@@ -12,10 +14,10 @@ data class BackupData(
     val fuelDetails: List<FuelDetailDto>,
     val maintenanceDetails: List<MaintenanceDetailDto>,
     val documents: List<DocumentDto>,
-    // Nuevos campos con default para retrocompatibilidad
     val attachments: List<AttachmentDto> = emptyList(),
     val maintenanceSchedules: List<MaintenanceScheduleDto> = emptyList(),
-    val reminders: List<ReminderDto> = emptyList()
+    val reminders: List<ReminderDto> = emptyList(),
+    val goals: List<GoalDto> = emptyList()
 )
 
 @Serializable
@@ -73,4 +75,12 @@ data class ReminderDto(
     val id: String, val vehicleId: String, val sourceType: String, val sourceId: String,
     val title: String, val body: String, val triggerAtEpochMillis: Long,
     val enabled: Boolean, val lastNotifiedAt: Long?
+)
+
+@Serializable
+data class GoalDto(
+    val id: String, val vehicleId: String, val title: String, val notes: String?,
+    val estimatedCents: Long, val estimatedMaxCents: Long?, val priority: String,
+    val targetDateEpochDay: Long?, val status: String, val categoryId: String?,
+    val createdAt: Long, val completedAt: Long?, val linkedExpenseId: String?
 )

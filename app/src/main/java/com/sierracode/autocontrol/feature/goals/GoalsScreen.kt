@@ -23,6 +23,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.ui.components.EmptyState
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import com.sierracode.autocontrol.data.repository.GoalRepository
@@ -61,9 +62,7 @@ class GoalsViewModel @Inject constructor(
             goalRepo.observeByVehicle(id),
             expenseRepo.observeByVehicle(id)
         ) { goals, expenses ->
-            // --- FILTRO DE SEGURIDAD: Ignoramos los objetivos con ID vacío ---
             val validGoals = goals.filter { it.id.isNotBlank() }
-
             val pending = validGoals.filter { it.status == "PENDIENTE" }
             val completed = validGoals.filter { it.status == "COMPRADO" }.map { g ->
                 val exp = expenses.find { it.id == g.linkedExpenseId }
@@ -131,55 +130,62 @@ fun GoalsScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // Tarjeta de Resumen
-            state.totals?.let { totals ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+
+            if (state.pendingGoals.isEmpty() && state.completedGoals.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Default.Flag,
+                    title = stringResource(R.string.goals_empty),
+                    description = "Toca el botón + para agregar algo que quieras comprar o hacerle a tu auto.",
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                state.totals?.let { totals ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.goals_total_pending), style = MaterialTheme.typography.labelLarge)
+                            if (totals.minTotal == totals.maxTotal) {
+                                Text(formatMoneyCents(totals.minTotal), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text(stringResource(R.string.goals_range, formatMoneyCents(totals.minTotal), formatMoneyCents(totals.maxTotal)), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.goals_total_pending), style = MaterialTheme.typography.labelLarge)
-                        if (totals.minTotal == totals.maxTotal) {
-                            Text(formatMoneyCents(totals.minTotal), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        } else {
-                            Text(stringResource(R.string.goals_range, formatMoneyCents(totals.minTotal), formatMoneyCents(totals.maxTotal)), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        }
+                    items(state.pendingGoals, key = { it.id }) { goal ->
+                        GoalListCard(
+                            goal = goal,
+                            onClick = { onGoalClick(goal.id) },
+                            onDelete = { goalToDelete = goal }
+                        )
                     }
-                }
-            } ?: Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.goals_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(state.pendingGoals, key = { it.id }) { goal ->
-                    GoalListCard(
-                        goal = goal,
-                        onClick = { onGoalClick(goal.id) },
-                        onDelete = { goalToDelete = goal }
-                    )
-                }
-
-                if (state.completedGoals.isNotEmpty()) {
-                    item {
-                        Row(
-                            Modifier.fillMaxWidth().clickable { expandedCompleted = !expandedCompleted }.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(stringResource(R.string.goals_completed_section, state.completedGoals.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            Icon(if (expandedCompleted) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
+                    if (state.completedGoals.isNotEmpty()) {
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().clickable { expandedCompleted = !expandedCompleted }.padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(stringResource(R.string.goals_completed_section, state.completedGoals.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Icon(if (expandedCompleted) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expandedCompleted) "Contraer" else "Expandir")
+                            }
                         }
-                    }
-                    if (expandedCompleted) {
-                        items(state.completedGoals, key = { it.goal.id }) { item ->
-                            GoalListCard(
-                                goal = item.goal,
-                                onClick = { onGoalClick(item.goal.id) },
-                                onDelete = { goalToDelete = item.goal }
-                            )
+                        if (expandedCompleted) {
+                            items(state.completedGoals, key = { it.goal.id }) { item ->
+                                GoalListCard(
+                                    goal = item.goal,
+                                    onClick = { onGoalClick(item.goal.id) },
+                                    onDelete = { goalToDelete = item.goal }
+                                )
+                            }
                         }
                     }
                 }
@@ -208,11 +214,24 @@ fun GoalListCard(goal: GoalEntity, onClick: () -> Unit, onDelete: () -> Unit) {
                     "MEDIA" -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.primary
                 }
-                Icon(Icons.Default.Flag, contentDescription = null, tint = iconColor)
+                val priorityText = when (goal.priority) {
+                    "ALTA" -> stringResource(R.string.priority_alta)
+                    "MEDIA" -> stringResource(R.string.priority_media)
+                    else -> stringResource(R.string.priority_baja)
+                }
+
+                Icon(Icons.Default.Flag, contentDescription = priorityText, tint = iconColor)
                 Spacer(Modifier.width(16.dp))
 
                 Column(Modifier.weight(1f)) {
                     Text(goal.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    // Texto de prioridad para no depender del color
+                    Text(
+                        text = priorityText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = iconColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     val est = if (goal.estimatedMaxCents != null && goal.estimatedMaxCents != goal.estimatedCents) {
                         stringResource(R.string.goals_range, formatMoneyCents(goal.estimatedCents), formatMoneyCents(goal.estimatedMaxCents))
                     } else formatMoneyCents(goal.estimatedCents)
