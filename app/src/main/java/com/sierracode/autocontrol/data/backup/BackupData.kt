@@ -4,14 +4,18 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class BackupData(
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2, // <-- Subimos a 2
     val appVersion: String = "1.0.0",
     val exportedAt: Long,
     val vehicles: List<VehicleDto>,
     val expenses: List<ExpenseDto>,
     val fuelDetails: List<FuelDetailDto>,
     val maintenanceDetails: List<MaintenanceDetailDto>,
-    val documents: List<DocumentDto>
+    val documents: List<DocumentDto>,
+    // Nuevos campos con default para retrocompatibilidad
+    val attachments: List<AttachmentDto> = emptyList(),
+    val maintenanceSchedules: List<MaintenanceScheduleDto> = emptyList(),
+    val reminders: List<ReminderDto> = emptyList()
 )
 
 @Serializable
@@ -48,4 +52,25 @@ data class DocumentDto(
     val id: String, val vehicleId: String, val type: String, val name: String,
     val issueDateEpochDay: Long?, val expiryDateEpochDay: Long?, val reminderLeadDays: Int,
     val fileUri: String?, val notes: String?, val createdAt: Long
+)
+
+@Serializable
+data class AttachmentDto(
+    val id: String, val ownerType: String, val ownerId: String, val uri: String,
+    val mimeType: String, val bytes: Long, val createdAt: Long
+)
+
+@Serializable
+data class MaintenanceScheduleDto(
+    val id: String, val vehicleId: String, val name: String,
+    val intervalKm: Long?, val intervalMonths: Int?, val lastOdometer: Long?,
+    val lastDateEpochDay: Long?, val remindBeforeKm: Long, val remindBeforeDays: Int,
+    val active: Boolean
+)
+
+@Serializable
+data class ReminderDto(
+    val id: String, val vehicleId: String, val sourceType: String, val sourceId: String,
+    val title: String, val body: String, val triggerAtEpochMillis: Long,
+    val enabled: Boolean, val lastNotifiedAt: Long?
 )

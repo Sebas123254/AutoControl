@@ -13,11 +13,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,12 +40,6 @@ class SettingsViewModel @Inject constructor(
     fun setTheme(mode: Boolean?) = viewModelScope.launch { settings.setDark(mode) }
 }
 
-enum class ThemeOption(val label: String) {
-    SYSTEM("Sistema"),
-    LIGHT("Claro"),
-    DARK("Oscuro")
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -53,19 +49,13 @@ fun SettingsScreen(
     val darkMode by vm.darkMode.collectAsState()
     val isPro by vm.isPro.collectAsState()
 
-    val currentTheme = when (darkMode) {
-        null -> ThemeOption.SYSTEM
-        false -> ThemeOption.LIGHT
-        true -> ThemeOption.DARK
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ajustes", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -80,11 +70,11 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            Text("Apariencia", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_appearance), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Tema de la aplicación", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.bodyLarge)
                     Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -92,22 +82,22 @@ fun SettingsScreen(
                     ) {
                         ThemeChip(
                             icon = Icons.Default.DarkMode,
-                            label = "Sistema",
-                            selected = currentTheme == ThemeOption.SYSTEM,
+                            label = stringResource(R.string.settings_theme_system),
+                            selected = darkMode == null,
                             onClick = { vm.setTheme(null) },
                             modifier = Modifier.weight(1f)
                         )
                         ThemeChip(
                             icon = Icons.Default.LightMode,
-                            label = "Claro",
-                            selected = currentTheme == ThemeOption.LIGHT,
+                            label = stringResource(R.string.settings_theme_light),
+                            selected = darkMode == false,
                             onClick = { vm.setTheme(false) },
                             modifier = Modifier.weight(1f)
                         )
                         ThemeChip(
                             icon = Icons.Default.DarkMode,
-                            label = "Oscuro",
-                            selected = currentTheme == ThemeOption.DARK,
+                            label = stringResource(R.string.settings_theme_dark),
+                            selected = darkMode == true,
                             onClick = { vm.setTheme(true) },
                             modifier = Modifier.weight(1f)
                         )
@@ -115,7 +105,7 @@ fun SettingsScreen(
                 }
             }
 
-            Text("Suscripción", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_subscription), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -131,12 +121,12 @@ fun SettingsScreen(
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (isPro) "Versión Pro" else "Versión Gratuita",
+                            stringResource(if (isPro) R.string.settings_pro_title else R.string.settings_free_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (isPro) "Tienes acceso a todas las funciones." else "Límite: 1 vehículo. Pasa a Pro para ilimitados.",
+                            stringResource(if (isPro) R.string.settings_pro_desc else R.string.settings_free_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -144,17 +134,17 @@ fun SettingsScreen(
                 }
             }
 
-            Text("Información", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.settings_info), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
                     Icon(Icons.Default.Info, contentDescription = null)
                     Spacer(Modifier.width(16.dp))
                     Column {
-                        Text("Tus datos son tuyos", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.settings_privacy_title), fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "Toda tu información se guarda localmente en tu celular. No enviamos nada a internet. Puedes respaldarla en cualquier momento desde la pantalla de vehículos.",
+                            stringResource(R.string.settings_privacy_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -164,10 +154,10 @@ fun SettingsScreen(
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("AutoControl", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Text("SierraCode", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.settings_dev), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
-                    Text("Versión 0.1.0", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.settings_version, "0.1.0"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

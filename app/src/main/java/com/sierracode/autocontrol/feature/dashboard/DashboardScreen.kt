@@ -12,18 +12,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDouble
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
-import com.sierracode.autocontrol.data.local.dao.FuelDao
-import com.sierracode.autocontrol.data.local.dao.ScheduleDao
-import com.sierracode.autocontrol.data.repository.ExpenseRepository
-import com.sierracode.autocontrol.data.repository.VehicleRepository
+import com.sierracode.autocontrol.data.repository.*
 import com.sierracode.autocontrol.domain.calc.FuelPoint
 import com.sierracode.autocontrol.domain.calc.Urgency
 import com.sierracode.autocontrol.domain.calc.evaluateSchedule
@@ -53,8 +52,8 @@ data class EvaluatedSchedule(
 class DashboardViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val expenseRepo: ExpenseRepository,
-    private val fuelDao: FuelDao,
-    private val scheduleDao: ScheduleDao
+    private val fuelRepo: FuelRepository,
+    private val scheduleRepo: ScheduleRepository
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
 
@@ -92,7 +91,7 @@ class DashboardViewModel @Inject constructor(
 
     val schedules = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else combine(
-            scheduleDao.observeActive(id),
+            scheduleRepo.observeActive(id),
             vehicleRepo.observe(id)
         ) { schedules, vehicle ->
             val today = LocalDate.now().toEpochDay()
@@ -110,12 +109,12 @@ class DashboardViewModel @Inject constructor(
                     )
                     EvaluatedSchedule(s.name, status.urgency, status.byKm, status.byDate)
                 }
-            } // <-- QUITAMOS EL FILTRO. Ahora muestra todos.
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val avgKmPerLiter = vehicleIdFlow.flatMapLatest { id ->
-        if (id == null) flowOf(null) else fuelDao.observeFuel(id).map { fuelList ->
+        if (id == null) flowOf(null) else fuelRepo.observeFuel(id).map { fuelList ->
             val points = fuelList.reversed().mapNotNull { f ->
                 if (f.odometer != null) {
                     FuelPoint(
@@ -160,10 +159,10 @@ fun DashboardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Dashboard", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.dashboard_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.DirectionsCar, contentDescription = "Mis Vehículos")
+                        Icon(Icons.Default.DirectionsCar, contentDescription = stringResource(R.string.vehicles_title))
                     }
                 }
             )
@@ -172,7 +171,7 @@ fun DashboardScreen(
             ExtendedFloatingActionButton(
                 onClick = onRegisterExpense,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("Registrar Gasto") }
+                text = { Text(stringResource(R.string.dashboard_action_expense)) }
             )
         }
     ) { padding ->
@@ -196,14 +195,13 @@ fun DashboardScreen(
                         Spacer(Modifier.width(16.dp))
                         Column {
                             Text("${v.brand} ${v.model}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("${v.year} • ${v.plates ?: "Sin placas"}", style = MaterialTheme.typography.bodyMedium)
+                            Text("${v.year} • ${v.plates ?: stringResource(R.string.vehicles_no_plates)}", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
 
-                // 🔔 MANTENIMIENTOS (Siempre visibles si existen)
                 if (schedules.isNotEmpty()) {
-                    Text("Mantenimientos Programados", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.dashboard_scheduled), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     schedules.forEach { schedule ->
                         val color = when (schedule.urgency) {
                             Urgency.OVERDUE -> MaterialTheme.colorScheme.errorContainer
@@ -225,15 +223,15 @@ fun DashboardScreen(
                                 Column {
                                     Text(schedule.name, fontWeight = FontWeight.Bold)
                                     val text = when (schedule.urgency) {
-                                        Urgency.OVERDUE -> "🔴 VENCIDO"
-                                        Urgency.SOON -> "🟡 PRÓXIMO"
-                                        Urgency.OK -> "🟢 AL DÍA"
-                                        Urgency.UNKNOWN -> "⚪ SIN DATOS"
+                                        Urgency.OVERDUE -> stringResource(R.string.dashboard_status_overdue)
+                                        Urgency.SOON -> stringResource(R.string.dashboard_status_soon)
+                                        Urgency.OK -> stringResource(R.string.dashboard_status_ok)
+                                        Urgency.UNKNOWN -> stringResource(R.string.dashboard_status_unknown)
                                     }
                                     Text(text, style = MaterialTheme.typography.bodySmall)
 
                                     if (schedule.remainingKm != null && schedule.remainingKm > 0) {
-                                        Text("Faltan ${formatKm(schedule.remainingKm)}", style = MaterialTheme.typography.bodySmall)
+                                        Text(stringResource(R.string.dashboard_remaining_km, formatKm(schedule.remainingKm)), style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
                             }
@@ -241,13 +239,12 @@ fun DashboardScreen(
                     }
                 }
 
-                // 💰 COSTO REAL
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    InfoCard(title = "Kilometraje", value = formatKm(v.odometer), modifier = Modifier.weight(1f))
+                    InfoCard(title = stringResource(R.string.dashboard_mileage), value = formatKm(v.odometer), modifier = Modifier.weight(1f))
                     if (totalSpent > 0L) {
-                        InfoCard(title = "Gastado total", value = formatMoneyCents(totalSpent), modifier = Modifier.weight(1f))
+                        InfoCard(title = stringResource(R.string.dashboard_total_spent), value = formatMoneyCents(totalSpent), modifier = Modifier.weight(1f))
                     } else {
-                        InfoCard(title = "Gastado total", value = "Aún sin gastos", modifier = Modifier.weight(1f))
+                        InfoCard(title = stringResource(R.string.dashboard_total_spent), value = stringResource(R.string.dashboard_no_expenses), modifier = Modifier.weight(1f))
                     }
                 }
 
@@ -258,48 +255,46 @@ fun DashboardScreen(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Costo Real del Auto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.dashboard_real_cost), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Costo por km:", style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.dashboard_cost_per_km), style = MaterialTheme.typography.bodyMedium)
                                 Text(costPerKm?.let { "$${"%.2f".format(it / 100)}/km" } ?: "—", fontWeight = FontWeight.Bold)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Costo por mes:", style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.dashboard_cost_per_month), style = MaterialTheme.typography.bodyMedium)
                                 Text(formatMoneyCents(costPerMonth), fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
 
-                // ⛽ RENDIMIENTO
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Rendimiento promedio", style = MaterialTheme.typography.labelMedium)
+                        Text(stringResource(R.string.dashboard_avg_performance), style = MaterialTheme.typography.labelMedium)
                         Text(
-                            text = if (avgKmL != null) formatDouble(avgKmL, 2, " km/L") else "Sin datos suficientes",
+                            text = if (avgKmL != null) formatDouble(avgKmL, 2, " km/L") else stringResource(R.string.dashboard_no_data),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                         if (avgKmL == null) {
-                            Text("Registra al menos 2 cargas de tanque lleno.", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.dashboard_full_tank_hint), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
 
-                // ACCIONES
-                Text("Acciones rápidas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.dashboard_quick_actions), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onRegisterFuel, modifier = Modifier.weight(1f)) { Text("⛽ Gasolina") }
-                    Button(onClick = onRegisterMaintenance, modifier = Modifier.weight(1f)) { Text("🔧 Mantenimiento") }
+                    Button(onClick = onRegisterFuel, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.dashboard_action_fuel)) }
+                    Button(onClick = onRegisterMaintenance, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.dashboard_action_maint)) }
                 }
                 OutlinedButton(onClick = onOpenReminders, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Notifications, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Ver Recordatorios")
+                    Text(stringResource(R.string.dashboard_action_reminders))
                 }
             }
         }
@@ -314,7 +309,7 @@ fun InfoCard(title: String, value: String, modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 value,
-                style = if (value == "Aún sin gastos") MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
+                style = if (value == stringResource(R.string.dashboard_no_expenses)) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
         }

@@ -1,6 +1,6 @@
 package com.sierracode.autocontrol.data.backup
 
-import androidx.room.withTransaction // <-- ESTE ERA EL IMPORT QUE FALTABA
+import androidx.room.withTransaction
 import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.entity.*
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +17,6 @@ class BackupManager @Inject constructor(
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    // --- EXPORTAR ---
     suspend fun exportToJson(outputStream: OutputStream) {
         withContext(Dispatchers.IO) {
             val backup = BackupData(
@@ -26,7 +25,10 @@ class BackupManager @Inject constructor(
                 expenses = db.expenseDao().getAllOnce().map { it.toDto() },
                 fuelDetails = db.fuelDao().getAllOnce().map { it.toDto() },
                 maintenanceDetails = db.maintenanceDao().getAllOnce().map { it.toDto() },
-                documents = db.documentDao().getAllOnce().map { it.toDto() }
+                documents = db.documentDao().getAllOnce().map { it.toDto() },
+                attachments = db.attachmentDao().getAllOnce().map { it.toDto() },
+                maintenanceSchedules = db.scheduleDao().getAllOnce().map { it.toDto() },
+                reminders = db.reminderDao().getAllOnce().map { it.toDto() }
             )
             val jsonString = json.encodeToString(BackupData.serializer(), backup)
             outputStream.write(jsonString.toByteArray())
@@ -34,33 +36,37 @@ class BackupManager @Inject constructor(
         }
     }
 
-    // --- IMPORTAR ---
     suspend fun importFromJson(inputStream: InputStream): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
                 val jsonString = inputStream.bufferedReader().use { it.readText() }
                 val backup = json.decodeFromString(BackupData.serializer(), jsonString)
 
-                if (backup.schemaVersion > 1) {
+                if (backup.schemaVersion > 2) {
                     return@withContext Result.failure(Exception("Versión de respaldo no soportada."))
                 }
 
-                // Hacemos todo en una transacción para evitar datos a medias
                 db.withTransaction {
-                    // 1. Borrar todo (en orden inverso a las llaves foráneas)
+                    // 1. Borrar todo (orden inverso a FKs)
                     db.reminderDao().deleteAll()
+                    db.attachmentDao().deleteAll()
+                    db.scheduleDao().deleteAll()
                     db.documentDao().deleteAll()
                     db.maintenanceDao().deleteAll()
                     db.fuelDao().deleteAll()
                     db.expenseDao().deleteAll()
                     db.vehicleDao().deleteAll()
 
-                    // 2. Insertar de nuevo (en orden de dependencias)
+                    // 2. Insertar de nuevo (orden de dependencias)
                     backup.vehicles.forEach { db.vehicleDao().upsert(it.toEntity()) }
                     backup.expenses.forEach { db.expenseDao().upsert(it.toEntity()) }
                     backup.fuelDetails.forEach { db.fuelDao().upsert(it.toEntity()) }
+                    // Los schedules deben ir antes que los maintenance_details por la FK
+                    backup.maintenanceSchedules.forEach { db.scheduleDao().upsert(it.toEntity()) }
                     backup.maintenanceDetails.forEach { db.maintenanceDao().upsert(it.toEntity()) }
                     backup.documents.forEach { db.documentDao().upsert(it.toEntity()) }
+                    backup.attachments.forEach { db.attachmentDao().upsert(it.toEntity()) }
+                    backup.reminders.forEach { db.reminderDao().upsert(it.toEntity()) }
                 }
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -76,6 +82,9 @@ private fun ExpenseEntity.toDto() = ExpenseDto(id, vehicleId, type, categoryId, 
 private fun FuelDetailEntity.toDto() = FuelDetailDto(expenseId, litersMilli, pricePerLiterCents, fuelType, station, fullTank)
 private fun MaintenanceDetailEntity.toDto() = MaintenanceDetailDto(expenseId, scheduleId, serviceName, workshop, nextOdometer, nextDateEpochDay)
 private fun DocumentEntity.toDto() = DocumentDto(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
+private fun AttachmentEntity.toDto() = AttachmentDto(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
+private fun MaintenanceScheduleEntity.toDto() = MaintenanceScheduleDto(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
+private fun ReminderEntity.toDto() = ReminderDto(id, vehicleId, sourceType, sourceId, title, body, triggerAtEpochMillis, enabled, lastNotifiedAt)
 
 // --- Conversiones DTO -> Entity ---
 private fun VehicleDto.toEntity() = VehicleEntity(id, brand, model, year, trim, color, plates, vin, fuelType, tankLiters, odometer, photoUri, purchaseDateEpochDay, purchasePriceCents, notes, createdAt, updatedAt)
@@ -83,3 +92,6 @@ private fun ExpenseDto.toEntity() = ExpenseEntity(id, vehicleId, type, categoryI
 private fun FuelDetailDto.toEntity() = FuelDetailEntity(expenseId, litersMilli, pricePerLiterCents, fuelType, station, fullTank)
 private fun MaintenanceDetailDto.toEntity() = MaintenanceDetailEntity(expenseId, scheduleId, serviceName, workshop, nextOdometer, nextDateEpochDay)
 private fun DocumentDto.toEntity() = DocumentEntity(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
+private fun AttachmentDto.toEntity() = AttachmentEntity(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
+private fun MaintenanceScheduleDto.toEntity() = MaintenanceScheduleEntity(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
+private fun ReminderDto.toEntity() = ReminderEntity(id, vehicleId, sourceType, sourceId, title, body, triggerAtEpochMillis, enabled, lastNotifiedAt)

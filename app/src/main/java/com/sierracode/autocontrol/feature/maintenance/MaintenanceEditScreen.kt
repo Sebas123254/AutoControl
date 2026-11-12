@@ -1,27 +1,41 @@
 package com.sierracode.autocontrol.feature.maintenance
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sierracode.autocontrol.data.local.dao.ScheduleDao
+import coil.compose.AsyncImage
+import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.util.ImageUtils
+import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
+import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.local.entity.MaintenanceDetailEntity
 import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
-import com.sierracode.autocontrol.data.repository.ExpenseRepository
-import com.sierracode.autocontrol.data.repository.VehicleRepository
+import com.sierracode.autocontrol.data.repository.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.UUID
@@ -31,26 +45,32 @@ import javax.inject.Inject
 class MaintenanceEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
-    private val scheduleDao: ScheduleDao,
+    private val scheduleRepo: ScheduleRepository,
+    categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
 
-    var serviceName by mutableStateOf("")
+    val maintCategories = categoryRepo.observeAll()
+        .map { list -> list.filter { it.group == "MAINT" || it.group == "REPAIR" } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    var selectedCategory by mutableStateOf<CategoryEntity?>(null)
     var amount by mutableStateOf("")
     var odometer by mutableStateOf("")
     var workshop by mutableStateOf("")
     var nextOdometer by mutableStateOf("")
+    var selectedImageUri by mutableStateOf<Uri?>(null)
 
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
-    fun save(onDone: () -> Unit) {
+    fun save(context: android.content.Context, onDone: () -> Unit) {
         val amt = amount.toDoubleOrNull() ?: 0.0
         val odo = odometer.toLongOrNull()
 
-        if (serviceName.isBlank() || amt <= 0) {
-            error = "Ingresa un nombre y un monto válido"
+        if (selectedCategory == null || amt <= 0) {
+            error = context.getString(R.string.maint_edit_err_valid)
             return
         }
 
@@ -62,33 +82,59 @@ class MaintenanceEditViewModel @Inject constructor(
                     id = expenseId,
                     vehicleId = vehicleId,
                     type = "MAINTENANCE",
-                    categoryId = "maint_general", // Categoría general
+                    categoryId = selectedCategory!!.id,
                     amountCents = (amt * 100).toLong(),
                     dateEpochDay = LocalDate.now().toEpochDay(),
                     odometer = odo,
-                    description = serviceName
+                    description = selectedCategory!!.name
                 )
 
                 val nextOdo = nextOdometer.toLongOrNull()
                 val detail = MaintenanceDetailEntity(
                     expenseId = expenseId,
-                    serviceName = serviceName,
+                    serviceName = selectedCategory!!.name,
                     workshop = workshop.takeIf { it.isNotBlank() },
                     nextOdometer = nextOdo
                 )
 
-                expenseRepo.saveWithDetails(expense, null, detail)
+                var attachment: AttachmentEntity? = null
+                val currentUri = selectedImageUri
+                if (currentUri != null) {
+                    val compressedUri = ImageUtils.compressAndSave(context, currentUri)
+                    if (compressedUri != null) {
+                        val fileSize = compressedUri.path?.let { java.io.File(it).length() } ?: 0L
+                        attachment = AttachmentEntity(
+                            ownerType = "expense",
+                            ownerId = expenseId,
+                            uri = compressedUri.toString(),
+                            mimeType = "image/jpeg",
+                            bytes = fileSize
+                        )
+                    }
+                }
 
-                // Si el usuario puso un "próximo kilometraje", creamos una regla automática
-                if (nextOdo != null && odo != null) {
-                    val schedule = MaintenanceScheduleEntity(
-                        vehicleId = vehicleId,
-                        name = serviceName,
-                        intervalKm = nextOdo - odo, // Calculamos el intervalo
-                        lastOdometer = odo,
-                        lastDateEpochDay = LocalDate.now().toEpochDay()
-                    )
-                    scheduleDao.upsert(schedule)
+                expenseRepo.saveWithDetails(expense, null, detail, attachment)
+
+                if (odo != null) {
+                    val existingSchedule = scheduleRepo.getActiveByName(vehicleId, selectedCategory!!.name)
+
+                    if (existingSchedule != null) {
+                        val updatedSchedule = existingSchedule.copy(
+                            lastOdometer = odo,
+                            lastDateEpochDay = LocalDate.now().toEpochDay(),
+                            intervalKm = if (nextOdo != null) (nextOdo - odo) else existingSchedule.intervalKm
+                        )
+                        scheduleRepo.upsert(updatedSchedule)
+                    } else if (nextOdo != null) {
+                        val newSchedule = MaintenanceScheduleEntity(
+                            vehicleId = vehicleId,
+                            name = selectedCategory!!.name,
+                            intervalKm = nextOdo - odo,
+                            lastOdometer = odo,
+                            lastDateEpochDay = LocalDate.now().toEpochDay()
+                        )
+                        scheduleRepo.upsert(newSchedule)
+                    }
                 }
 
                 if (odo != null && odo > 0) {
@@ -97,7 +143,7 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 onDone()
             } catch (e: Exception) {
-                error = "Error al guardar: ${e.message}"
+                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
             } finally {
                 isLoading = false
             }
@@ -112,13 +158,29 @@ fun MaintenanceEditScreen(
     onDone: () -> Unit,
     vm: MaintenanceEditViewModel = hiltViewModel()
 ) {
+    val categories by vm.maintCategories.collectAsState()
+    var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    LaunchedEffect(categories) {
+        if (vm.selectedCategory == null && categories.isNotEmpty()) {
+            vm.selectedCategory = categories.firstOrNull { it.id == "maint_general" } ?: categories.first()
+        }
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) vm.selectedImageUri = uri
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Registrar Mantenimiento") },
+                title = { Text(stringResource(R.string.maint_edit_title)) },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -132,17 +194,32 @@ fun MaintenanceEditScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            OutlinedTextField(
-                value = vm.serviceName,
-                onValueChange = { vm.serviceName = it },
-                label = { Text("Servicio (Ej. Cambio de aceite) *") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                OutlinedTextField(
+                    value = vm.selectedCategory?.name ?: stringResource(R.string.maint_edit_select_type),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.maint_edit_type)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.name) },
+                            onClick = {
+                                vm.selectedCategory = category
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = vm.amount,
                 onValueChange = { vm.amount = it },
-                label = { Text("Costo total ($) *") },
+                label = { Text(stringResource(R.string.maint_edit_cost)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -150,7 +227,7 @@ fun MaintenanceEditScreen(
             OutlinedTextField(
                 value = vm.odometer,
                 onValueChange = { vm.odometer = it },
-                label = { Text("Kilometraje actual *") },
+                label = { Text(stringResource(R.string.fuel_edit_odometer)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -158,31 +235,49 @@ fun MaintenanceEditScreen(
             OutlinedTextField(
                 value = vm.workshop,
                 onValueChange = { vm.workshop = it },
-                label = { Text("Taller (Opcional)") },
+                label = { Text(stringResource(R.string.maint_edit_workshop)) },
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = vm.nextOdometer,
                 onValueChange = { vm.nextOdometer = it },
-                label = { Text("Próximo servicio en este km (Opcional)") },
+                label = { Text(stringResource(R.string.maint_edit_next_odo)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            OutlinedButton(
+                onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(if (vm.selectedImageUri == null) R.string.maint_edit_receipt else R.string.maint_edit_receipt_change))
+            }
+
+            if (vm.selectedImageUri != null) {
+                AsyncImage(
+                    model = vm.selectedImageUri,
+                    contentDescription = stringResource(R.string.expense_edit_receipt_desc),
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                    contentScale = ContentScale.Crop
+                )
+            }
 
             vm.error?.let {
                 Text(text = it, color = MaterialTheme.colorScheme.error)
             }
 
             Button(
-                onClick = { vm.save(onDone) },
+                onClick = { vm.save(context, onDone) },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
                 if (vm.isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
                 } else {
-                    Text("Guardar Mantenimiento")
+                    Text(stringResource(R.string.maint_edit_save))
                 }
             }
         }

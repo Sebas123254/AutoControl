@@ -11,15 +11,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
-import com.sierracode.autocontrol.data.local.dao.ReminderDao
 import com.sierracode.autocontrol.data.local.entity.ReminderEntity
+import com.sierracode.autocontrol.data.repository.ReminderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,12 +36,12 @@ import javax.inject.Inject
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class RemindersViewModel @Inject constructor(
-    private val reminderDao: ReminderDao
+    private val reminderRepo: ReminderRepository
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
 
     val reminders = vehicleIdFlow.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else reminderDao.observeByVehicle(id)
+        if (id == null) flowOf(emptyList()) else reminderRepo.observeByVehicle(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun loadVehicle(id: String) {
@@ -48,13 +50,13 @@ class RemindersViewModel @Inject constructor(
 
     fun toggleReminder(reminder: ReminderEntity, enabled: Boolean) {
         viewModelScope.launch {
-            reminderDao.upsert(reminder.copy(enabled = enabled))
+            reminderRepo.upsert(reminder.copy(enabled = enabled))
         }
     }
 
     fun deleteReminder(id: String) {
         viewModelScope.launch {
-            reminderDao.deleteById(id)
+            reminderRepo.deleteById(id)
         }
     }
 }
@@ -73,20 +75,19 @@ fun RemindersScreen(
     val reminders by vm.reminders.collectAsState()
     var reminderToDelete by remember { mutableStateOf<ReminderEntity?>(null) }
 
-    // Diálogo de confirmación
     if (reminderToDelete != null) {
         AlertDialog(
             onDismissRequest = { reminderToDelete = null },
-            title = { Text("Eliminar recordatorio") },
-            text = { Text("¿Estás seguro que deseas eliminar este recordatorio?") },
+            title = { Text(stringResource(R.string.reminders_delete_title)) },
+            text = { Text(stringResource(R.string.reminders_delete_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteReminder(reminderToDelete!!.id)
                     reminderToDelete = null
-                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { reminderToDelete = null }) { Text("Cancelar") }
+                TextButton(onClick = { reminderToDelete = null }) { Text(stringResource(R.string.action_cancel)) }
             }
         )
     }
@@ -94,10 +95,10 @@ fun RemindersScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Recordatorios", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.reminders_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -119,10 +120,10 @@ fun RemindersScreen(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(16.dp))
-                Text("No hay recordatorios activos", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.reminders_empty_title), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Los recordatorios se crean automáticamente al registrar documentos o programar mantenimientos.",
+                    stringResource(R.string.reminders_empty_desc),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -138,7 +139,7 @@ fun RemindersScreen(
                     ReminderCard(
                         reminder = reminder,
                         onToggle = { enabled -> vm.toggleReminder(reminder, enabled) },
-                        onDelete = { reminderToDelete = reminder } // Ahora abre el diálogo
+                        onDelete = { reminderToDelete = reminder }
                     )
                 }
             }
@@ -173,7 +174,7 @@ fun ReminderCard(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Aviso: $dateText",
+                    text = stringResource(R.string.reminders_notice, dateText),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -187,7 +188,7 @@ fun ReminderCard(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Eliminar",
+                    contentDescription = stringResource(R.string.action_delete),
                     tint = MaterialTheme.colorScheme.error
                 )
             }

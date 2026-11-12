@@ -12,18 +12,26 @@ import javax.inject.Singleton
 abstract class RepositoryModule {
 
     @Binds @Singleton
-    abstract fun bindVehicleRepository(
-        impl: VehicleRepositoryImpl
-    ): VehicleRepository
+    abstract fun bindVehicleRepository(impl: VehicleRepositoryImpl): VehicleRepository
 
     @Binds @Singleton
-    abstract fun bindExpenseRepository(
-        impl: ExpenseRepositoryImpl
-    ): ExpenseRepository
+    abstract fun bindExpenseRepository(impl: ExpenseRepositoryImpl): ExpenseRepository
 
-    // ¡ESTA ES LA QUE FALTABA!
     @Binds @Singleton
-    abstract fun bindDocumentRepository(
-        impl: DocumentRepositoryImpl
-    ): DocumentRepository
+    abstract fun bindDocumentRepository(impl: DocumentRepositoryImpl): DocumentRepository
+
+    @Binds @Singleton
+    abstract fun bindAttachmentRepository(impl: AttachmentRepositoryImpl): AttachmentRepository
+
+    @Binds @Singleton
+    abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
+
+    @Binds @Singleton
+    abstract fun bindFuelRepository(impl: FuelRepositoryImpl): FuelRepository
+
+    @Binds @Singleton
+    abstract fun bindScheduleRepository(impl: ScheduleRepositoryImpl): ScheduleRepository
+
+    @Binds @Singleton
+    abstract fun bindReminderRepository(impl: ReminderRepositoryImpl): ReminderRepository
 }

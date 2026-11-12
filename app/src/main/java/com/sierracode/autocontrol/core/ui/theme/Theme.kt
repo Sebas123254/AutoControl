@@ -23,5 +23,9 @@ private val Dark = darkColorScheme(
 
 @Composable
 fun AutoControlTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (darkTheme) Dark else Light, content = content)
+    MaterialTheme(
+        colorScheme = if (darkTheme) Dark else Light,
+        typography = Typography, // <-- AHORA SÍ SE APLICA
+        content = content
+    )
 }

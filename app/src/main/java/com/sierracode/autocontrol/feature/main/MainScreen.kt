@@ -30,6 +30,7 @@ fun MainScreen(
     vehicleId: String,
     onBackToVehicles: () -> Unit,
     onRegisterExpense: () -> Unit,
+    onEditExpense: (String) -> Unit, // <-- NUEVO
     onRegisterFuel: () -> Unit,
     onRegisterMaintenance: () -> Unit,
     onEditDocument: (String) -> Unit,
@@ -70,9 +71,6 @@ fun MainScreen(
                 }
             }
         },
-        // ESTA ES LA LÍNEA MÁGICA:
-        // Le decimos al Scaffold exterior que ignore los insets del sistema,
-        // porque las pantallas de adentro ya manejan su propio TopAppBar.
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         NavHost(
@@ -88,14 +86,15 @@ fun MainScreen(
                     onRegisterExpense = onRegisterExpense,
                     onRegisterFuel = onRegisterFuel,
                     onRegisterMaintenance = onRegisterMaintenance,
-                    onOpenReminders = onOpenReminders // <-- NUEVO
+                    onOpenReminders = onOpenReminders
                 )
             }
             composable(BottomNavItem.Expenses.route) { backStackEntry ->
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 ExpensesScreen(
                     vehicleId = vId,
-                    onBack = { /* No hace falta */ }
+                    onBack = { /* No hace falta */ },
+                    onEditClick = onEditExpense // <-- NUEVO
                 )
             }
             composable(BottomNavItem.Stats.route) { backStackEntry ->

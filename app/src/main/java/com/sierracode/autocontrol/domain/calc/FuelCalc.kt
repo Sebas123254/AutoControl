@@ -1,5 +1,8 @@
 package com.sierracode.autocontrol.domain.calc
 
+import java.time.LocalDate
+import java.time.YearMonth
+
 /** Punto de carga de combustible. */
 data class FuelPoint(
     val odometer: Long?,
@@ -16,10 +19,6 @@ data class FuelConsumption(
     val km: Long
 )
 
-/**
- * Calcula el consumo real entre dos cargas consecutivas, SOLO si ambas son tanque lleno
- * y hay odómetro válido y creciente. Devuelve null en caso contrario (nunca inventa).
- */
 fun consumptionBetween(previous: FuelPoint, current: FuelPoint): FuelConsumption? {
     if (!previous.fullTank || !current.fullTank) return null
     val pOdo = previous.odometer ?: return null
@@ -45,11 +44,9 @@ data class FuelSummary(
     val annualSpentCents: Long
 )
 
-/**
- * Resume histórico. Promedio km/L se calcula solo entre pares full-tank consecutivos.
- */
 fun summarizeFuel(points: List<FuelPoint>): FuelSummary {
     if (points.isEmpty()) return FuelSummary(null, null, 0.0, 0L, null, 0L)
+
     val totalLiters = points.sumOf { it.liters }
     val totalSpent = points.sumOf { it.amountCents }
 
@@ -63,8 +60,18 @@ fun summarizeFuel(points: List<FuelPoint>): FuelSummary {
         .map { it.amountCents / it.liters }
         .takeIf { it.isNotEmpty() }?.average()
 
-    val distinctMonths = points.map { it.epochDay / 30 }.distinct().size
+    // --- CORRECCIÓN DE FECHAS ---
+    // Agrupamos por mes/año real, no por bloques de 30 días
+    val distinctMonths = points.map {
+        YearMonth.from(LocalDate.ofEpochDay(it.epochDay))
+    }.distinct().size
     val monthlyAvg = if (distinctMonths > 0) totalSpent / distinctMonths else null
+
+    // Gasto anual: sumamos solo los puntos del mismo año que la última carga registrada
+    val lastYear = LocalDate.ofEpochDay(points.last().epochDay).year
+    val annualSpent = points.filter {
+        LocalDate.ofEpochDay(it.epochDay).year == lastYear
+    }.sumOf { it.amountCents }
 
     return FuelSummary(
         avgKmPerLiter = avgKmPerLiter,
@@ -72,6 +79,6 @@ fun summarizeFuel(points: List<FuelPoint>): FuelSummary {
         totalLiters = totalLiters,
         totalSpentCents = totalSpent,
         monthlyAvgSpentCents = monthlyAvg,
-        annualSpentCents = totalSpent // se ajustará por rango en el use-case
+        annualSpentCents = annualSpent // Ahora sí es anual
     )
 }

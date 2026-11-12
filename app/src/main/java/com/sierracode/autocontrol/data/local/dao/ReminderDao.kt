@@ -26,4 +26,6 @@ interface ReminderDao {
 
     @Query("UPDATE reminders SET lastNotifiedAt = :time WHERE id = :id")
     suspend fun markNotified(id: String, time: Long)
+    // --- NUEVO PARA BACKUP ---
+    @Query("SELECT * FROM reminders") suspend fun getAllOnce(): List<ReminderEntity>
 }

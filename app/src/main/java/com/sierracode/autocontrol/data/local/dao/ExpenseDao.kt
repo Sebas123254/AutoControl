@@ -14,13 +14,17 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE vehicleId = :vehicleId ORDER BY dateEpochDay DESC, createdAt DESC")
     fun observeByVehicle(vehicleId: String): Flow<List<ExpenseEntity>>
 
-    // ESTA ERA LA QUE FALTABA
     @Query("SELECT * FROM expenses WHERE vehicleId = :vehicleId AND dateEpochDay BETWEEN :from AND :to ORDER BY dateEpochDay DESC, createdAt DESC")
     fun observeByVehicleAndRange(vehicleId: String, from: Long, to: Long): Flow<List<ExpenseEntity>>
 
     @Query("SELECT * FROM expenses WHERE id = :id") suspend fun get(id: String): ExpenseEntity?
+
     @Upsert suspend fun upsert(e: ExpenseEntity)
+
     @Query("DELETE FROM expenses WHERE id = :id") suspend fun delete(id: String)
+
+    // --- NUEVO: Borrado múltiple ---
+    @Query("DELETE FROM expenses WHERE id IN (:ids)") suspend fun deleteByIds(ids: List<String>)
 
     @Query("SELECT SUM(amountCents) FROM expenses WHERE vehicleId = :vehicleId AND dateEpochDay BETWEEN :from AND :to")
     fun observeSum(vehicleId: String, from: Long, to: Long): Flow<Long?>

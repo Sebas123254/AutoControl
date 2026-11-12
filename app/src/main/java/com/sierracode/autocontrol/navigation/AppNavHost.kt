@@ -123,6 +123,7 @@ fun AppNavHost(nav: NavHostController) {
                     vehicleId = id,
                     onBackToVehicles = { nav.popBackStack() },
                     onRegisterExpense = { nav.navigate(Route.ExpenseEdit.build(id)) },
+                    onEditExpense = { expenseId -> nav.navigate(Route.ExpenseEdit.build(id, expenseId)) }, // <-- NUEVO
                     onRegisterFuel = { nav.navigate(Route.FuelEdit.build(id)) },
                     onRegisterMaintenance = { nav.navigate(Route.MaintenanceEdit.build(id)) },
                     onAddDocument = { nav.navigate(Route.DocumentEdit.build(id)) },

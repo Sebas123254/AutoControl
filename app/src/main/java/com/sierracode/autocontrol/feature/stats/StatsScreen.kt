@@ -16,14 +16,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
-import com.sierracode.autocontrol.data.local.dao.CategoryDao
+import com.sierracode.autocontrol.data.repository.CategoryRepository
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,7 +49,7 @@ data class MonthlyStat(val monthLabel: String, val totalCents: Long)
 @HiltViewModel
 class StatsViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
-    private val categoryDao: CategoryDao
+    private val categoryRepo: CategoryRepository
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
 
@@ -67,13 +69,13 @@ class StatsViewModel @Inject constructor(
         vehicleIdFlow.flatMapLatest { id ->
             if (id == null) flowOf(emptyList()) else expenseRepo.observeByCategory(id, 0L, Long.MAX_VALUE)
         },
-        categoryDao.observeAll()
+        categoryRepo.observeAll()
     ) { totals, categories ->
         val grandTotal = totals.sumOf { it.totalCents }
         if (grandTotal == 0L) return@combine emptyList()
 
         totals.mapNotNull { row ->
-            val catName = categories.find { it.id == row.categoryId }?.name ?: "Otros"
+            val catName = categories.find { it.id == row.categoryId }?.name ?: "Otros" // Will use fallback in UI
             CategoryStat(
                 name = catName,
                 totalCents = row.totalCents,
@@ -104,10 +106,10 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Estadísticas", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.stats_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.DirectionsCar, contentDescription = "Mis Vehículos")
+                        Icon(Icons.Default.DirectionsCar, contentDescription = stringResource(R.string.vehicles_title))
                     }
                 }
             )
@@ -115,7 +117,7 @@ fun StatsScreen(
     ) { padding ->
         if (monthlyStats.isEmpty() && categoryStats.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Registra gastos para ver estadísticas.", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.stats_empty), style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             LazyColumn(
@@ -125,7 +127,7 @@ fun StatsScreen(
             ) {
                 item {
                     Text(
-                        "Evolución Mensual",
+                        stringResource(R.string.stats_monthly_evolution),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -150,14 +152,14 @@ fun StatsScreen(
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    text = "Aún no hay suficiente historial",
+                                    text = stringResource(R.string.stats_not_enough_history),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Registra gastos en al menos 2 meses diferentes para ver la gráfica de evolución.",
+                                    text = stringResource(R.string.stats_history_hint),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -170,7 +172,7 @@ fun StatsScreen(
                 if (categoryStats.isNotEmpty()) {
                     item {
                         Text(
-                            "Distribución por Categoría",
+                            stringResource(R.string.stats_category_distribution),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -239,7 +241,7 @@ fun StatBar(stat: CategoryStat) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = stat.name, fontWeight = FontWeight.Medium)
+            Text(text = if (stat.name == "Otros") stringResource(R.string.stats_others) else stat.name, fontWeight = FontWeight.Medium)
             Text(text = formatMoneyCents(stat.totalCents), fontWeight = FontWeight.Bold)
         }
 
@@ -255,7 +257,7 @@ fun StatBar(stat: CategoryStat) {
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = String.format(Locale.getDefault(), "%.1f%% del total", stat.percentage),
+            text = stringResource(R.string.stats_percent_total, stat.percentage),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

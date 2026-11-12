@@ -15,12 +15,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.data.backup.BackupManager
 import com.sierracode.autocontrol.data.local.entity.VehicleEntity
@@ -28,6 +30,7 @@ import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -45,7 +48,20 @@ class VehiclesViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun setActiveVehicle(id: String) = viewModelScope.launch { settings.setActiveVehicle(id) }
-    fun deleteVehicles(ids: List<String>) = viewModelScope.launch { repo.deleteMultiple(ids) }
+
+    fun deleteVehicles(ids: List<String>) = viewModelScope.launch {
+        repo.deleteMultiple(ids)
+        val active = settings.activeVehicleId.first()
+        if (active != null && ids.contains(active)) {
+            settings.setActiveVehicle(null)
+        }
+    }
+
+    suspend fun getActiveVehicleId(): String? {
+        val activeId = settings.activeVehicleId.first() ?: return null
+        val exists = vehicles.value.any { it.id == activeId }
+        return if (exists) activeId else null
+    }
 
     fun exportData(uri: Uri, context: android.content.Context, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -81,6 +97,17 @@ fun VehiclesScreen(
     val isPro by vm.isPro.collectAsState()
     val context = LocalContext.current
 
+    var hasRedirected by remember { mutableStateOf(false) }
+    LaunchedEffect(vehicles) {
+        if (!hasRedirected && vehicles.isNotEmpty()) {
+            val activeId = vm.getActiveVehicleId()
+            if (activeId != null) {
+                hasRedirected = true
+                onVehicleClick(activeId)
+            }
+        }
+    }
+
     var showImportDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showProDialog by remember { mutableStateOf(false) }
@@ -99,32 +126,32 @@ fun VehiclesScreen(
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text("Restaurar Respaldo") },
-            text = { Text("¿Estás seguro? Esto borrará todos los datos actuales y los reemplazará por los del archivo.") },
+            title = { Text(stringResource(R.string.vehicles_restore_title)) },
+            text = { Text(stringResource(R.string.vehicles_restore_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     showImportDialog = false
                     openDocumentLauncher.launch(arrayOf("application/json"))
-                }) { Text("Sí, restaurar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_yes_restore), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
         )
     }
 
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar ${selectedVehicles.size} vehículo(s)") },
-            text = { Text("¿Estás seguro? Se borrarán también TODOS sus gastos y mantenimientos asociados.") },
+            title = { Text(stringResource(R.string.vehicles_delete_title, selectedVehicles.size)) },
+            text = { Text(stringResource(R.string.vehicles_delete_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteVehicles(selectedVehicles.toList())
                     isSelectionMode = false
                     selectedVehicles = emptySet()
                     showDeleteDialog = false
-                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
         )
     }
 
@@ -132,11 +159,9 @@ fun VehiclesScreen(
         AlertDialog(
             onDismissRequest = { showProDialog = false },
             icon = { Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
-            title = { Text("Función Pro") },
-            text = { Text("La versión gratuita permite registrar solo 1 vehículo.\n\nPasa a Pro para agregar vehículos ilimitados y desbloquear todas las funciones.") },
-            confirmButton = {
-                TextButton(onClick = { showProDialog = false }) { Text("Entendido") }
-            }
+            title = { Text(stringResource(R.string.vehicles_pro_title)) },
+            text = { Text(stringResource(R.string.vehicles_pro_desc)) },
+            confirmButton = { TextButton(onClick = { showProDialog = false }) { Text(stringResource(R.string.action_understood)) } }
         )
     }
 
@@ -144,27 +169,27 @@ fun VehiclesScreen(
         topBar = {
             if (isSelectionMode) {
                 TopAppBar(
-                    title = { Text("${selectedVehicles.size} seleccionados") },
+                    title = { Text(stringResource(R.string.vehicles_selected, selectedVehicles.size)) },
                     navigationIcon = {
                         IconButton(onClick = {
                             isSelectionMode = false
                             selectedVehicles = emptySet()
-                        }) { Icon(Icons.Default.Close, "Cancelar selección") }
+                        }) { Icon(Icons.Default.Close, stringResource(R.string.vehicles_cancel_selection)) }
                     },
                     actions = {
                         IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Default.Delete, "Borrar", tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Default.Delete, stringResource(R.string.action_delete), tint = MaterialTheme.colorScheme.error)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 )
             } else {
                 TopAppBar(
-                    title = { Text("Mis Vehículos", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.vehicles_title), fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton(onClick = { showImportDialog = true }) { Icon(Icons.Default.FolderOpen, "Importar") }
-                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.json") }) { Icon(Icons.Default.Save, "Exportar") }
-                        IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, "Ajustes") }
+                        IconButton(onClick = { showImportDialog = true }) { Icon(Icons.Default.FolderOpen, stringResource(R.string.vehicles_cd_import)) }
+                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.json") }) { Icon(Icons.Default.Save, stringResource(R.string.vehicles_cd_export)) }
+                        IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, stringResource(R.string.vehicles_cd_settings)) }
                     }
                 )
             }
@@ -172,14 +197,8 @@ fun VehiclesScreen(
         floatingActionButton = {
             if (!isSelectionMode) {
                 FloatingActionButton(onClick = {
-                    if (!isPro && vehicles.isNotEmpty()) {
-                        showProDialog = true
-                    } else {
-                        onAddClick()
-                    }
-                }) {
-                    Icon(Icons.Default.Add, "Agregar Vehículo")
-                }
+                    if (!isPro && vehicles.isNotEmpty()) showProDialog = true else onAddClick()
+                }) { Icon(Icons.Default.Add, stringResource(R.string.vehicles_cd_add)) }
             }
         }
     ) { padding ->
@@ -191,11 +210,11 @@ fun VehiclesScreen(
             ) {
                 Icon(Icons.Default.DirectionsCar, contentDescription = null, modifier = Modifier.size(64.dp))
                 Spacer(Modifier.height(16.dp))
-                Text("Aún no tienes vehículos", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.vehicles_empty_title), style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
-                Text("Agrega tu primer auto para empezar.", textAlign = TextAlign.Center)
+                Text(stringResource(R.string.vehicles_empty_subtitle), textAlign = TextAlign.Center)
                 Spacer(Modifier.height(24.dp))
-                Button(onClick = onAddClick) { Text("Agregar mi primer auto") }
+                Button(onClick = onAddClick) { Text(stringResource(R.string.vehicles_add_first)) }
             }
         } else {
             LazyColumn(
@@ -242,18 +261,13 @@ fun VehicleCard(
     onLongClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
         )
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Default.DirectionsCar,
                 contentDescription = null,
@@ -261,18 +275,13 @@ fun VehicleCard(
                 tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.width(16.dp))
-
             Column(modifier = Modifier.weight(1f)) {
                 Text("${vehicle.brand} ${vehicle.model}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${vehicle.year} • ${vehicle.plates ?: "Sin placas"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${vehicle.year} • ${vehicle.plates ?: stringResource(R.string.vehicles_no_plates)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(formatKm(vehicle.odometer), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
-
             if (isSelectionMode) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onClick() }
-                )
+                Checkbox(checked = isSelected, onCheckedChange = { onClick() })
             }
         }
     }

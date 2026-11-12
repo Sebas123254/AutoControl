@@ -1,3 +1,161 @@
 <resources>
     <string name="app_name">AutoControl</string>
+
+    <!-- General -->
+    <string name="action_back">Atrás</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="action_edit">Editar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_yes_restore">Sí, restaurar</string>
+    <string name="action_understood">Entendido</string>
+
+    <!-- Vehículos -->
+    <string name="vehicles_title">Mis Vehículos</string>
+    <string name="vehicles_empty_title">Aún no tienes vehículos</string>
+    <string name="vehicles_empty_subtitle">Agrega tu primer auto para empezar.</string>
+    <string name="vehicles_add_first">Agregar mi primer auto</string>
+    <string name="vehicles_no_plates">Sin placas</string>
+    <string name="vehicles_pro_title">Función Pro</string>
+    <string name="vehicles_pro_desc">La versión gratuita permite registrar solo 1 vehículo.\n\nPasa a Pro para agregar vehículos ilimitados y desbloquear todas las funciones.</string>
+    <string name="vehicles_delete_title">Eliminar %1$d vehículo(s)</string>
+    <string name="vehicles_delete_desc">¿Estás seguro? Se borrarán también TODOS sus gastos y mantenimientos asociados.</string>
+    <string name="vehicles_restore_title">Restaurar Respaldo</string>
+    <string name="vehicles_restore_desc">¿Estás seguro? Esto borrará todos los datos actuales y los reemplazará por los del archivo.</string>
+    <string name="vehicles_cd_import">Importar</string>
+    <string name="vehicles_cd_export">Exportar</string>
+    <string name="vehicles_cd_settings">Ajustes</string>
+    <string name="vehicles_cd_add">Agregar Vehículo</string>
+    <string name="vehicles_selected">%1$d seleccionados</string>
+    <string name="vehicles_cancel_selection">Cancelar selección</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">Dashboard</string>
+    <string name="dashboard_scheduled">Mantenimientos Programados</string>
+    <string name="dashboard_status_overdue">🔴 VENCIDO</string>
+    <string name="dashboard_status_soon">🟡 PRÓXIMO</string>
+    <string name="dashboard_status_ok">🟢 AL DÍA</string>
+    <string name="dashboard_status_unknown">⚪ SIN DATOS</string>
+    <string name="dashboard_remaining_km">Faltan %1$s</string>
+    <string name="dashboard_mileage">Kilometraje</string>
+    <string name="dashboard_total_spent">Gastado total</string>
+    <string name="dashboard_no_expenses">Aún sin gastos</string>
+    <string name="dashboard_real_cost">Costo Real del Auto</string>
+    <string name="dashboard_cost_per_km">Costo por km:</string>
+    <string name="dashboard_cost_per_month">Costo por mes:</string>
+    <string name="dashboard_avg_performance">Rendimiento promedio</string>
+    <string name="dashboard_no_data">Sin datos suficientes</string>
+    <string name="dashboard_full_tank_hint">Registra al menos 2 cargas de tanque lleno.</string>
+    <string name="dashboard_quick_actions">Acciones rápidas</string>
+    <string name="dashboard_action_fuel">⛽ Gasolina</string>
+    <string name="dashboard_action_maint">🔧 Mantenimiento</string>
+    <string name="dashboard_action_reminders">Ver Recordatorios</string>
+    <string name="dashboard_action_expense">Registrar Gasto</string>
+
+    <!-- Gastos (Lista) -->
+    <string name="expenses_title">Historial de Gastos</string>
+    <string name="expenses_empty">No hay gastos registrados aún.</string>
+    <string name="expenses_detail_title">Detalle del gasto</string>
+    <string name="expenses_amount">Monto: %1$s</string>
+    <string name="expenses_date">Fecha: %1$s</string>
+    <string name="expenses_odometer">Kilometraje: %1$d km</string>
+    <string name="expenses_receipt_zoom">Recibo adjunto (toca para ampliar):</string>
+    <string name="expenses_no_receipt">Sin recibo adjunto</string>
+    <string name="expenses_amplify">Ampliar</string>
+    <string name="expenses_full_screen">Recibo a pantalla completa</string>
+    <string name="expenses_default_name">Gasto</string>
+
+    <!-- Editar Gasto -->
+    <string name="expense_edit_new">Registrar Gasto</string>
+    <string name="expense_edit_update">Editar Gasto</string>
+    <string name="expense_edit_category">Categoría *</string>
+    <string name="expense_edit_select_category">Selecciona categoría</string>
+    <string name="expense_edit_amount">Monto total ($) *</string>
+    <string name="expense_edit_odometer">Kilometraje actual (Opcional)</string>
+    <string name="expense_edit_desc">Descripción (Ej. Cambio de aceite)</string>
+    <string name="expense_edit_receipt">Adjuntar recibo (Opcional)</string>
+    <string name="expense_edit_receipt_change">Cambiar recibo</string>
+    <string name="expense_edit_save">Guardar Gasto</string>
+    <string name="expense_edit_err_amount">Ingresa un monto válido</string>
+    <string name="expense_edit_err_category">Selecciona una categoría</string>
+    <string name="expense_edit_err_generic">Error al guardar: %1$s</string>
+    <string name="expense_edit_receipt_desc">Recibo</string>
+
+    <!-- Gasolina -->
+    <string name="fuel_edit_title">Registrar Gasolina</string>
+    <string name="fuel_edit_type">Tipo de combustible *</string>
+    <string name="fuel_edit_select_type">Selecciona tipo</string>
+    <string name="fuel_edit_odometer">Kilometraje actual *</string>
+    <string name="fuel_edit_liters">Litros *</string>
+    <string name="fuel_edit_price">Precio/L *</string>
+    <string name="fuel_edit_total">Total pagado ($) *</string>
+    <string name="fuel_edit_station">Estación (Ej. Pemex)</string>
+    <string name="fuel_edit_full_tank">¿Llené el tanque? (Necesario para calcular km/L)</string>
+    <string name="fuel_edit_receipt">Adjuntar ticket (Opcional)</string>
+    <string name="fuel_edit_receipt_change">Cambiar ticket</string>
+    <string name="fuel_edit_save">Guardar Carga</string>
+    <string name="fuel_edit_err_valid">Ingresa litros y total válidos</string>
+    <string name="fuel_edit_err_type">Selecciona el tipo de combustible</string>
+    <string name="fuel_edit_desc">Carga de %1$s</string>
+
+    <!-- Mantenimiento -->
+    <string name="maint_edit_title">Registrar Mantenimiento</string>
+    <string name="maint_edit_type">Tipo de mantenimiento *</string>
+    <string name="maint_edit_select_type">Selecciona servicio</string>
+    <string name="maint_edit_cost">Costo total ($) *</string>
+    <string name="maint_edit_workshop">Taller (Opcional)</string>
+    <string name="maint_edit_next_odo">Próximo servicio en este km (Opcional)</string>
+    <string name="maint_edit_receipt">Adjuntar factura (Opcional)</string>
+    <string name="maint_edit_receipt_change">Cambiar factura</string>
+    <string name="maint_edit_save">Guardar Mantenimiento</string>
+    <string name="maint_edit_err_valid">Selecciona una categoría e ingresa un monto válido</string>
+
+    <!-- Estadísticas -->
+    <string name="stats_title">Estadísticas</string>
+    <string name="stats_empty">Registra gastos para ver estadísticas.</string>
+    <string name="stats_monthly_evolution">Evolución Mensual</string>
+    <string name="stats_not_enough_history">Aún no hay suficiente historial</string>
+    <string name="stats_history_hint">Registra gastos en al menos 2 meses diferentes para ver la gráfica de evolución.</string>
+    <string name="stats_category_distribution">Distribución por Categoría</string>
+    <string name="stats_percent_total">%.1f%% del total</string>
+    <string name="stats_others">Otros</string>
+
+    <!-- Recordatorios -->
+    <string name="reminders_title">Recordatorios</string>
+    <string name="reminders_empty_title">No hay recordatorios activos</string>
+    <string name="reminders_empty_desc">Los recordatorios se crean automáticamente al registrar documentos o programar mantenimientos.</string>
+    <string name="reminders_delete_title">Eliminar recordatorio</string>
+    <string name="reminders_delete_desc">¿Estás seguro que deseas eliminar este recordatorio?</string>
+    <string name="reminders_notice">Aviso: %1$s</string>
+
+    <!-- Ajustes -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_appearance">Apariencia</string>
+    <string name="settings_theme">Tema de la aplicación</string>
+    <string name="settings_theme_system">Sistema</string>
+    <string name="settings_theme_light">Claro</string>
+    <string name="settings_theme_dark">Oscuro</string>
+    <string name="settings_subscription">Suscripción</string>
+    <string name="settings_pro_title">Versión Pro</string>
+    <string name="settings_free_title">Versión Gratuita</string>
+    <string name="settings_pro_desc">Tienes acceso a todas las funciones.</string>
+    <string name="settings_free_desc">Límite: 1 vehículo. Pasa a Pro para ilimitados.</string>
+    <string name="settings_info">Información</string>
+    <string name="settings_privacy_title">Tus datos son tuyos</string>
+    <string name="settings_privacy_desc">Toda tu información se guarda localmente en tu celular. No enviamos nada a internet. Puedes respaldarla en cualquier momento desde la pantalla de vehículos.</string>
+    <string name="settings_dev">SierraCode</string>
+    <string name="settings_version">Versión %1$s</string>
+
+    <string name="action_share">Compartir</string>
+    <string name="expenses_share_title">Compartir recibo</string>
+
+    <!-- Selección Múltiple Gastos -->
+    <string name="expenses_selected">%1$d seleccionados</string>
+    <string name="expenses_select_all">Seleccionar todo</string>
+    <string name="expenses_delete_title">Eliminar %1$d gasto(s)</string>
+    <string name="expenses_delete_desc">Se eliminarán también sus recibos y detalles asociados. Esta acción no se puede deshacer.</string>
+    <string name="expenses_deleted_success">%1$d gasto(s) eliminado(s)</string>
+    <string name="expenses_delete_error">Error al eliminar los gastos</string>
+    <string name="expenses_cancel_selection">Cancelar selección</string>
+    <string name="action_delete_plural">Eliminar seleccionados</string>
 </resources>

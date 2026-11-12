@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,15 +25,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.util.ImageUtils
-import com.sierracode.autocontrol.data.local.dao.CategoryDao
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
-import com.sierracode.autocontrol.data.repository.ExpenseRepository
-import com.sierracode.autocontrol.data.repository.VehicleRepository
+import com.sierracode.autocontrol.data.repository.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -42,22 +43,44 @@ import javax.inject.Inject
 class ExpenseEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
-    categoryDao: CategoryDao,
+    private val attachmentRepo: AttachmentRepository,
+    categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
+    private val expenseId: String? = savedStateHandle.get<String>("expenseId")?.takeIf { it.isNotBlank() }
 
-    val categories = categoryDao.observeAll()
+    val categories = categoryRepo.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     var amount by mutableStateOf("")
     var odometer by mutableStateOf("")
     var description by mutableStateOf("")
     var selectedCategory by mutableStateOf<CategoryEntity?>(null)
-    var selectedImageUri by mutableStateOf<Uri?>(null) // <-- FOTO
+    var selectedImageUri by mutableStateOf<Uri?>(null)
 
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+
+    init {
+        if (expenseId != null) {
+            viewModelScope.launch {
+                val catList = categories.first { it.isNotEmpty() }
+                val existingExpense = expenseRepo.get(expenseId)
+                if (existingExpense != null) {
+                    amount = (existingExpense.amountCents / 100.0).toString()
+                    odometer = existingExpense.odometer?.toString() ?: ""
+                    description = existingExpense.description ?: ""
+                    selectedCategory = catList.find { it.id == existingExpense.categoryId }
+
+                    val oldAttachment = attachmentRepo.getForOwner("expense", expenseId)
+                    if (oldAttachment != null) {
+                        selectedImageUri = Uri.parse(oldAttachment.uri)
+                    }
+                }
+            }
+        }
+    }
 
     fun save(context: android.content.Context, onDone: () -> Unit) {
         val amountDouble = amount.toDoubleOrNull() ?: 0.0
@@ -65,41 +88,52 @@ class ExpenseEditViewModel @Inject constructor(
         val odo = odometer.toLongOrNull()
 
         if (amount.isEmpty() || amountCents <= 0) {
-            error = "Ingresa un monto válido"
+            error = context.getString(R.string.expense_edit_err_amount)
             return
         }
         if (selectedCategory == null) {
-            error = "Selecciona una categoría"
+            error = context.getString(R.string.expense_edit_err_category)
             return
         }
 
         viewModelScope.launch {
             isLoading = true
             try {
-                val expenseId = java.util.UUID.randomUUID().toString()
+                val finalExpenseId = expenseId ?: java.util.UUID.randomUUID().toString()
+                val existingExpense = if (expenseId != null) expenseRepo.get(expenseId) else null
+
                 val expense = ExpenseEntity(
-                    id = expenseId,
+                    id = finalExpenseId,
                     vehicleId = vehicleId,
                     type = selectedCategory!!.group,
                     categoryId = selectedCategory!!.id,
                     amountCents = amountCents,
-                    dateEpochDay = LocalDate.now().toEpochDay(),
+                    dateEpochDay = existingExpense?.dateEpochDay ?: LocalDate.now().toEpochDay(),
                     odometer = odo,
                     description = description.takeIf { it.isNotBlank() }
                 )
 
-                // Comprimir y guardar la imagen si existe
                 var attachment: AttachmentEntity? = null
-                selectedImageUri?.let { uri ->
-                    val compressedUri = ImageUtils.compressAndSave(context, uri)
-                    if (compressedUri != null) {
-                        attachment = AttachmentEntity(
-                            ownerType = "expense",
-                            ownerId = expenseId,
-                            uri = compressedUri.toString(),
-                            mimeType = "image/jpeg",
-                            bytes = 0L
-                        )
+                val currentUri = selectedImageUri
+
+                if (currentUri != null) {
+                    if (currentUri.scheme != "file") {
+                        val compressedUri = ImageUtils.compressAndSave(context, currentUri)
+                        if (compressedUri != null) {
+                            if (expenseId != null) {
+                                attachmentRepo.getForOwner("expense", expenseId)?.let { oldAtt ->
+                                    attachmentRepo.deleteById(oldAtt.id)
+                                }
+                            }
+                            val fileSize = compressedUri.path?.let { java.io.File(it).length() } ?: 0L
+                            attachment = AttachmentEntity(
+                                ownerType = "expense",
+                                ownerId = finalExpenseId,
+                                uri = compressedUri.toString(),
+                                mimeType = "image/jpeg",
+                                bytes = fileSize
+                            )
+                        }
                     }
                 }
 
@@ -111,7 +145,7 @@ class ExpenseEditViewModel @Inject constructor(
 
                 onDone()
             } catch (e: Exception) {
-                error = "Error al guardar: ${e.message}"
+                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
             } finally {
                 isLoading = false
             }
@@ -142,10 +176,10 @@ fun ExpenseEditScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Registrar Gasto") },
+                title = { Text(stringResource(if (expenseId == null) R.string.expense_edit_new else R.string.expense_edit_update)) },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -159,13 +193,12 @@ fun ExpenseEditScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Selector de categoría
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
-                    value = vm.selectedCategory?.name ?: "Selecciona categoría",
+                    value = vm.selectedCategory?.name ?: stringResource(R.string.expense_edit_select_category),
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Categoría *") },
+                    label = { Text(stringResource(R.string.expense_edit_category)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
@@ -185,7 +218,7 @@ fun ExpenseEditScreen(
             OutlinedTextField(
                 value = vm.amount,
                 onValueChange = { vm.amount = it },
-                label = { Text("Monto total ($) *") },
+                label = { Text(stringResource(R.string.expense_edit_amount)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -193,7 +226,7 @@ fun ExpenseEditScreen(
             OutlinedTextField(
                 value = vm.odometer,
                 onValueChange = { vm.odometer = it },
-                label = { Text("Kilometraje actual (Opcional)") },
+                label = { Text(stringResource(R.string.expense_edit_odometer)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -201,24 +234,23 @@ fun ExpenseEditScreen(
             OutlinedTextField(
                 value = vm.description,
                 onValueChange = { vm.description = it },
-                label = { Text("Descripción (Ej. Cambio de aceite)") },
+                label = { Text(stringResource(R.string.expense_edit_desc)) },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // --- SECCIÓN DE FOTO ---
             OutlinedButton(
                 onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.PhotoCamera, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (vm.selectedImageUri == null) "Adjuntar recibo (Opcional)" else "Cambiar recibo")
+                Text(stringResource(if (vm.selectedImageUri == null) R.string.expense_edit_receipt else R.string.expense_edit_receipt_change))
             }
 
             if (vm.selectedImageUri != null) {
                 AsyncImage(
                     model = vm.selectedImageUri,
-                    contentDescription = "Recibo",
+                    contentDescription = stringResource(R.string.expense_edit_receipt_desc),
                     modifier = Modifier.fillMaxWidth().height(200.dp),
                     contentScale = ContentScale.Crop
                 )
@@ -231,7 +263,7 @@ fun ExpenseEditScreen(
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp)) else Text("Guardar Gasto")
+                if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp)) else Text(stringResource(R.string.expense_edit_save))
             }
         }
     }
