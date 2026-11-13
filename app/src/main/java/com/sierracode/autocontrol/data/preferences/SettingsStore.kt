@@ -3,6 +3,7 @@ package com.sierracode.autocontrol.data.preferences
 import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.sierracode.autocontrol.domain.calc.GoalSort
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -24,6 +25,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
         val CURRENCY = stringPreferencesKey("currency_code")
         val UNIT_SYSTEM = stringPreferencesKey("unit_system")
         val EFFICIENCY_FORMAT = stringPreferencesKey("efficiency_format")
+        val GOALS_SORT = stringPreferencesKey("goals_sort") // <-- NUEVO
     }
 
     val onboarded: Flow<Boolean> = context.dataStore.data.map { it[K.ONBOARDED] ?: false }
@@ -39,6 +41,12 @@ class SettingsStore @Inject constructor(private val context: Context) {
         catch (e: Exception) { EfficiencyFormat.KM_PER_L }
     }
 
+    // <-- NUEVO
+    val goalsSort: Flow<GoalSort> = context.dataStore.data.map {
+        try { GoalSort.valueOf(it[K.GOALS_SORT] ?: GoalSort.PRIORITY_DESC.name) }
+        catch (e: Exception) { GoalSort.PRIORITY_DESC }
+    }
+
     suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.ONBOARDED] = v }
     suspend fun setActiveVehicle(id: String?) = context.dataStore.edit { p ->
         if (id == null) p.remove(K.ACTIVE_VEHICLE) else p[K.ACTIVE_VEHICLE] = id
@@ -49,7 +57,6 @@ class SettingsStore @Inject constructor(private val context: Context) {
     suspend fun setPro(v: Boolean) = context.dataStore.edit { it[K.IS_PRO] = v }
     suspend fun setCurrency(code: String) = context.dataStore.edit { it[K.CURRENCY] = code }
 
-    // LÓGICA AÑADIDA: Auto-ajustar formato de eficiencia al cambiar sistema
     suspend fun setUnitSystem(system: UnitSystem) {
         context.dataStore.edit {
             it[K.UNIT_SYSTEM] = system.name
@@ -61,4 +68,7 @@ class SettingsStore @Inject constructor(private val context: Context) {
         }
     }
     suspend fun setEfficiencyFormat(format: EfficiencyFormat) = context.dataStore.edit { it[K.EFFICIENCY_FORMAT] = format.name }
+
+    // <-- NUEVO
+    suspend fun setGoalsSort(sort: GoalSort) = context.dataStore.edit { it[K.GOALS_SORT] = sort.name }
 }

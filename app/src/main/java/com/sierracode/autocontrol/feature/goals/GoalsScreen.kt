@@ -5,12 +5,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,18 +24,13 @@ import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.ui.components.EmptyState
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
+import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import com.sierracode.autocontrol.data.repository.GoalRepository
-import com.sierracode.autocontrol.domain.calc.GoalCalcData
-import com.sierracode.autocontrol.domain.calc.calculatePendingTotals
+import com.sierracode.autocontrol.domain.calc.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -45,7 +39,12 @@ data class GoalWithExpense(val goal: GoalEntity, val realCents: Long?)
 data class GoalsUiState(
     val pendingGoals: List<GoalEntity> = emptyList(),
     val completedGoals: List<GoalWithExpense> = emptyList(),
-    val totals: com.sierracode.autocontrol.domain.calc.GoalTotals? = null,
+    val filteredTotal: GoalTotals? = null,
+    val generalTotal: GoalTotals? = null,
+    val countAll: Int = 0,
+    val countHigh: Int = 0,
+    val countMedium: Int = 0,
+    val countLow: Int = 0,
     val isLoading: Boolean = true
 )
 
@@ -53,27 +52,68 @@ data class GoalsUiState(
 @HiltViewModel
 class GoalsViewModel @Inject constructor(
     private val goalRepo: GoalRepository,
-    private val expenseRepo: ExpenseRepository
+    private val expenseRepo: ExpenseRepository,
+    private val settingsStore: SettingsStore
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
 
-    val uiState = vehicleIdFlow.flatMapLatest { id ->
-        if (id == null) flowOf(GoalsUiState(isLoading = false)) else combine(
-            goalRepo.observeByVehicle(id),
-            expenseRepo.observeByVehicle(id)
-        ) { goals, expenses ->
-            val validGoals = goals.filter { it.id.isNotBlank() }
-            val pending = validGoals.filter { it.status == "PENDIENTE" }
-            val completed = validGoals.filter { it.status == "COMPRADO" }.map { g ->
-                val exp = expenses.find { it.id == g.linkedExpenseId }
-                GoalWithExpense(g, exp?.amountCents)
-            }
-            val calcData = pending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) }
-            GoalsUiState(pending, completed, calculatePendingTotals(calcData), false)
+    // Exponemos los flujos para que la UI pueda observarlos
+    private val _activeFilter = MutableStateFlow(GoalFilter.ALL)
+    val activeFilter = _activeFilter.asStateFlow()
+
+    val activeSort = settingsStore.goalsSort.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GoalSort.PRIORITY_DESC)
+
+    val uiState = combine(
+        vehicleIdFlow.flatMapLatest { id ->
+            if (id == null) flowOf(emptyList()) else goalRepo.observeByVehicle(id)
+        },
+        vehicleIdFlow.flatMapLatest { id ->
+            if (id == null) flowOf(emptyList()) else expenseRepo.observeByVehicle(id)
+        },
+        _activeFilter,
+        activeSort
+    ) { goals, expenses, filter, sort ->
+        val validGoals = goals.filter { it.id.isNotBlank() }
+
+        // Calcular conteos
+        val countHigh = validGoals.count { it.priority == "ALTA" }
+        val countMedium = validGoals.count { it.priority == "MEDIA" }
+        val countLow = validGoals.count { it.priority == "BAJA" }
+
+        // Filtrar y ordenar
+        val sortedFiltered = filterAndSortGoals(validGoals, filter, sort)
+
+        val pending = sortedFiltered.filter { it.status == "PENDIENTE" }
+        val completed = sortedFiltered.filter { it.status == "COMPRADO" }.map { g ->
+            val exp = expenses.find { it.id == g.linkedExpenseId }
+            GoalWithExpense(g, exp?.amountCents)
         }
+
+        // Totales
+        val allPending = validGoals.filter { it.status == "PENDIENTE" }
+        val generalTotals = calculatePendingTotals(allPending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) })
+        val filteredTotals = calculatePendingTotals(pending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) })
+
+        GoalsUiState(
+            pendingGoals = pending,
+            completedGoals = completed,
+            filteredTotal = filteredTotals,
+            generalTotal = generalTotals,
+            countAll = validGoals.size,
+            countHigh = countHigh,
+            countMedium = countMedium,
+            countLow = countLow,
+            isLoading = false
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GoalsUiState())
 
     fun loadVehicle(id: String) { vehicleIdFlow.value = id }
+
+    fun setFilter(filter: GoalFilter) { _activeFilter.value = filter }
+
+    fun setSort(sort: GoalSort) {
+        viewModelScope.launch { settingsStore.setGoalsSort(sort) }
+    }
 
     fun deleteGoal(id: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
@@ -93,10 +133,14 @@ fun GoalsScreen(
     vm: GoalsViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
+
     val state by vm.uiState.collectAsState()
+    val activeFilter by vm.activeFilter.collectAsState()
+    val activeSort by vm.activeSort.collectAsState()
 
     var expandedCompleted by remember { mutableStateOf(false) }
     var goalToDelete by remember { mutableStateOf<GoalEntity?>(null) }
+    var showSortMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     if (goalToDelete != null) {
@@ -106,9 +150,7 @@ fun GoalsScreen(
             text = { Text(stringResource(R.string.goal_delete_desc)) },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.deleteGoal(goalToDelete!!.id) {
-                        goalToDelete = null
-                    }
+                    vm.deleteGoal(goalToDelete!!.id) { goalToDelete = null }
                 }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { goalToDelete = null }) { Text(stringResource(R.string.action_cancel)) } }
@@ -123,11 +165,20 @@ fun GoalsScreen(
                     Column {
                         Text(stringResource(R.string.goals_title), fontWeight = FontWeight.Bold)
                         if (vehicleName.isNotBlank()) {
-                            Text(
-                                vehicleName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(vehicleName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Ordenar")
+                        }
+                        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                            DropdownMenuItem(text = { Text("Prioridad: alta → baja") }, onClick = { vm.setSort(GoalSort.PRIORITY_DESC); showSortMenu = false })
+                            DropdownMenuItem(text = { Text("Prioridad: baja → alta") }, onClick = { vm.setSort(GoalSort.PRIORITY_ASC); showSortMenu = false })
+                            DropdownMenuItem(text = { Text("Fecha objetivo") }, onClick = { vm.setSort(GoalSort.TARGET_DATE); showSortMenu = false })
+                            DropdownMenuItem(text = { Text("Monto estimado") }, onClick = { vm.setSort(GoalSort.AMOUNT_DESC); showSortMenu = false })
                         }
                     }
                 }
@@ -139,25 +190,49 @@ fun GoalsScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
+            // CHIPS DE FILTRO (Sin asignación directa, solo llamada al VM)
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item { FilterChip(selected = activeFilter == GoalFilter.ALL, onClick = { vm.setFilter(GoalFilter.ALL) }, label = { Text("Todas (${state.countAll})") }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.HIGH, onClick = { vm.setFilter(GoalFilter.HIGH) }, label = { Text("Alta (${state.countHigh})") }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.MEDIUM, onClick = { vm.setFilter(GoalFilter.MEDIUM) }, label = { Text("Media (${state.countMedium})") }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.LOW, onClick = { vm.setFilter(GoalFilter.LOW) }, label = { Text("Baja (${state.countLow})") }) }
+            }
+
             if (state.pendingGoals.isEmpty() && state.completedGoals.isEmpty()) {
                 EmptyState(
                     icon = Icons.Default.Flag,
-                    title = stringResource(R.string.goals_empty),
-                    description = "Toca el botón + para agregar algo que quieras comprar o hacerle a tu auto.",
+                    title = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_empty) else "No hay objetivos de prioridad ${activeFilter.name.lowercase()}",
+                    description = if (activeFilter == GoalFilter.ALL) "Toca el botón + para agregar algo." else "Prueba cambiando el filtro o agrega uno nuevo.",
                     modifier = Modifier.weight(1f)
                 )
             } else {
-                state.totals?.let { totals ->
+                // TARJETA DE RESUMEN
+                state.filteredTotal?.let { totals ->
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text(stringResource(R.string.goals_total_pending), style = MaterialTheme.typography.labelLarge)
+                            Text(
+                                text = if (activeFilter == GoalFilter.ALL) "Total estimado pendiente" else "Mostrando: ${activeFilter.name.lowercase()}",
+                                style = MaterialTheme.typography.labelLarge
+                            )
                             if (totals.minTotal == totals.maxTotal) {
                                 Text(formatMoneyCents(totals.minTotal), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                             } else {
                                 Text(stringResource(R.string.goals_range, formatMoneyCents(totals.minTotal), formatMoneyCents(totals.maxTotal)), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            }
+
+                            if (activeFilter != GoalFilter.ALL && state.generalTotal != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Total general pendiente: ${formatMoneyCents(state.generalTotal!!.minTotal)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                )
                             }
                         }
                     }
@@ -169,11 +244,7 @@ fun GoalsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(state.pendingGoals, key = { it.id }) { goal ->
-                        GoalListCard(
-                            goal = goal,
-                            onClick = { onGoalClick(goal.id) },
-                            onDelete = { goalToDelete = goal }
-                        )
+                        GoalListCard(goal = goal, onClick = { onGoalClick(goal.id) }, onDelete = { goalToDelete = goal })
                     }
 
                     if (state.completedGoals.isNotEmpty()) {
@@ -183,16 +254,12 @@ fun GoalsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(stringResource(R.string.goals_completed_section, state.completedGoals.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                Icon(if (expandedCompleted) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expandedCompleted) "Contraer" else "Expandir")
+                                Icon(if (expandedCompleted) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
                             }
                         }
                         if (expandedCompleted) {
                             items(state.completedGoals, key = { it.goal.id }) { item ->
-                                GoalListCard(
-                                    goal = item.goal,
-                                    onClick = { onGoalClick(item.goal.id) },
-                                    onDelete = { goalToDelete = item.goal }
-                                )
+                                GoalListCard(goal = item.goal, onClick = { onGoalClick(item.goal.id) }, onDelete = { goalToDelete = item.goal })
                             }
                         }
                     }
@@ -206,15 +273,9 @@ fun GoalsScreen(
 @Composable
 fun GoalListCard(goal: GoalEntity, onClick: () -> Unit, onDelete: () -> Unit) {
     var showMenu by remember { mutableStateOf(false) }
-
     Box {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = { showMenu = true }
-                )
+            modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 val iconColor = when (goal.priority) {
@@ -233,12 +294,7 @@ fun GoalListCard(goal: GoalEntity, onClick: () -> Unit, onDelete: () -> Unit) {
 
                 Column(Modifier.weight(1f)) {
                     Text(goal.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = priorityText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = iconColor,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text(priorityText, style = MaterialTheme.typography.labelSmall, color = iconColor, fontWeight = FontWeight.SemiBold)
                     val est = if (goal.estimatedMaxCents != null && goal.estimatedMaxCents != goal.estimatedCents) {
                         stringResource(R.string.goals_range, formatMoneyCents(goal.estimatedCents), formatMoneyCents(goal.estimatedMaxCents))
                     } else formatMoneyCents(goal.estimatedCents)
@@ -246,17 +302,10 @@ fun GoalListCard(goal: GoalEntity, onClick: () -> Unit, onDelete: () -> Unit) {
                 }
             }
         }
-
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false }
-        ) {
+        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) },
-                onClick = {
-                    showMenu = false
-                    onDelete()
-                }
+                onClick = { showMenu = false; onDelete() }
             )
         }
     }
