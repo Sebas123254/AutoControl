@@ -22,7 +22,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
-import com.sierracode.autocontrol.core.ui.components.EmptyState
+import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
@@ -57,7 +57,6 @@ class GoalsViewModel @Inject constructor(
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
 
-    // Exponemos los flujos para que la UI pueda observarlos
     private val _activeFilter = MutableStateFlow(GoalFilter.ALL)
     val activeFilter = _activeFilter.asStateFlow()
 
@@ -75,12 +74,10 @@ class GoalsViewModel @Inject constructor(
     ) { goals, expenses, filter, sort ->
         val validGoals = goals.filter { it.id.isNotBlank() }
 
-        // Calcular conteos
         val countHigh = validGoals.count { it.priority == "ALTA" }
         val countMedium = validGoals.count { it.priority == "MEDIA" }
         val countLow = validGoals.count { it.priority == "BAJA" }
 
-        // Filtrar y ordenar
         val sortedFiltered = filterAndSortGoals(validGoals, filter, sort)
 
         val pending = sortedFiltered.filter { it.status == "PENDIENTE" }
@@ -89,7 +86,6 @@ class GoalsViewModel @Inject constructor(
             GoalWithExpense(g, exp?.amountCents)
         }
 
-        // Totales
         val allPending = validGoals.filter { it.status == "PENDIENTE" }
         val generalTotals = calculatePendingTotals(allPending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) })
         val filteredTotals = calculatePendingTotals(pending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) })
@@ -190,7 +186,6 @@ fun GoalsScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
-            // CHIPS DE FILTRO (Sin asignación directa, solo llamada al VM)
             LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -202,14 +197,16 @@ fun GoalsScreen(
             }
 
             if (state.pendingGoals.isEmpty() && state.completedGoals.isEmpty()) {
-                EmptyState(
-                    icon = Icons.Default.Flag,
-                    title = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_empty) else "No hay objetivos de prioridad ${activeFilter.name.lowercase()}",
-                    description = if (activeFilter == GoalFilter.ALL) "Toca el botón + para agregar algo." else "Prueba cambiando el filtro o agrega uno nuevo.",
-                    modifier = Modifier.weight(1f)
-                )
+                Box(Modifier.weight(1f).padding(16.dp), contentAlignment = Alignment.Center) {
+                    EmptyStateCard(
+                        icon = Icons.Default.Flag,
+                        title = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_empty) else "No hay objetivos de prioridad ${activeFilter.name.lowercase()}",
+                        description = if (activeFilter == GoalFilter.ALL) "Toca el botón + para agregar algo." else "Prueba cambiando el filtro o agrega uno nuevo.",
+                        actionLabel = "Agregar objetivo",
+                        onActionClick = onAddClick
+                    )
+                }
             } else {
-                // TARJETA DE RESUMEN
                 state.filteredTotal?.let { totals ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

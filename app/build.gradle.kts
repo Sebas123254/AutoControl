@@ -34,6 +34,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Habilitar JUnit 5
@@ -62,6 +63,8 @@ dependencies {
 
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")      // ← NUEVO
+    debugImplementation("androidx.compose.ui:ui-tooling")        // ← NUEVO
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")

@@ -8,10 +8,13 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.sierracode.autocontrol.MainActivity
+import com.sierracode.autocontrol.R
 
 object Notifications {
     private const val CHANNEL_ID = "autocontrol_reminders"
+    private const val GROUP_KEY  = "autocontrol_reminders_group"
 
     fun show(
         context: Context,
@@ -49,18 +52,22 @@ object Notifications {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification)                                  // NF1
+            .setColor(ContextCompat.getColor(context, R.color.notification_accent))    // NF4
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)                          // NF4
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setGroup(GROUP_KEY)                                                        // NF3
+            .setGroupSummary(false)
             .build()
 
         try {
             NotificationManagerCompat.from(context).notify(id.hashCode(), notification)
         } catch (e: SecurityException) {
-            // Si el usuario no dio permisos de notificación, falla silenciosamente
+            // Usuario sin permiso POST_NOTIFICATIONS: fallar en silencio.
         }
     }
 }

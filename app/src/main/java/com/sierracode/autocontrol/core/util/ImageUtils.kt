@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -88,6 +89,19 @@ object ImageUtils {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * Crea un archivo temporal y devuelve un URI seguro para usar con la cámara.
+     */
+    fun createTempImageUri(context: Context): Uri? {
+        return try {
+            val file = File(context.filesDir, "camera_${UUID.randomUUID()}.jpg")
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 }

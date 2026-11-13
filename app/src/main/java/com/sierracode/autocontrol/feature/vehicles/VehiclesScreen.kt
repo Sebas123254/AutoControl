@@ -62,7 +62,9 @@ class VehiclesViewModel @Inject constructor(
             try {
                 context.contentResolver.openOutputStream(uri)?.use { backupManager.exportToJson(it) }
                 onResult(true)
-            } catch (e: Exception) { onResult(false) }
+            } catch (e: Exception) {
+                onResult(false)
+            }
         }
     }
 
@@ -73,7 +75,9 @@ class VehiclesViewModel @Inject constructor(
                     val result = backupManager.importFromJson(it)
                     onResult(result.isSuccess)
                 }
-            } catch (e: Exception) { onResult(false) }
+            } catch (e: Exception) {
+                onResult(false)
+            }
         }
     }
 }
@@ -98,13 +102,37 @@ fun VehiclesScreen(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedVehicles by remember { mutableStateOf(setOf<String>()) }
 
+    // BK4/BK5: snackbar para feedback de export/import
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? -> uri?.let { vm.exportData(it, context) { } } }
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.exportData(uri, context) { success ->
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    if (success) "Respaldo guardado correctamente"
+                    else "No se pudo guardar el respaldo"
+                )
+            }
+        }
+    }
 
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> uri?.let { vm.importData(it, context) { } } }
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.importData(uri, context) { success ->
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    if (success) "Respaldo restaurado correctamente"
+                    else "No se pudo restaurar el respaldo"
+                )
+            }
+        }
+    }
 
     if (showImportDialog) {
         AlertDialog(
@@ -117,7 +145,11 @@ fun VehiclesScreen(
                     openDocumentLauncher.launch(arrayOf("application/json"))
                 }) { Text(stringResource(R.string.action_yes_restore), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
         )
     }
 
@@ -134,7 +166,11 @@ fun VehiclesScreen(
                     showDeleteDialog = false
                 }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
         )
     }
 
@@ -144,11 +180,16 @@ fun VehiclesScreen(
             icon = { Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
             title = { Text(stringResource(R.string.vehicles_pro_title)) },
             text = { Text(stringResource(R.string.vehicles_pro_desc)) },
-            confirmButton = { TextButton(onClick = { showProDialog = false }) { Text(stringResource(R.string.action_understood)) } }
+            confirmButton = {
+                TextButton(onClick = { showProDialog = false }) {
+                    Text(stringResource(R.string.action_understood))
+                }
+            }
         )
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (isSelectionMode) {
                 TopAppBar(
@@ -161,18 +202,30 @@ fun VehiclesScreen(
                     },
                     actions = {
                         IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Default.Delete, stringResource(R.string.action_delete), tint = MaterialTheme.colorScheme.error)
+                            Icon(
+                                Icons.Default.Delete,
+                                stringResource(R.string.action_delete),
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 )
             } else {
                 TopAppBar(
                     title = { Text(stringResource(R.string.vehicles_title), fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton(onClick = { showImportDialog = true }) { Icon(Icons.Default.FolderOpen, stringResource(R.string.vehicles_cd_import)) }
-                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.json") }) { Icon(Icons.Default.Save, stringResource(R.string.vehicles_cd_export)) }
-                        IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, stringResource(R.string.vehicles_cd_settings)) }
+                        IconButton(onClick = { showImportDialog = true }) {
+                            Icon(Icons.Default.FolderOpen, stringResource(R.string.vehicles_cd_import))
+                        }
+                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.json") }) {
+                            Icon(Icons.Default.Save, stringResource(R.string.vehicles_cd_export))
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Default.Settings, stringResource(R.string.vehicles_cd_settings))
+                        }
                     }
                 )
             }
@@ -213,7 +266,8 @@ fun VehiclesScreen(
                         isSelected = isSelected,
                         onClick = {
                             if (isSelectionMode) {
-                                val newSelection = if (isSelected) selectedVehicles - vehicle.id else selectedVehicles + vehicle.id
+                                val newSelection = if (isSelected) selectedVehicles - vehicle.id
+                                else selectedVehicles + vehicle.id
                                 selectedVehicles = newSelection
                                 if (newSelection.isEmpty()) isSelectionMode = false
                             } else {
@@ -249,7 +303,8 @@ fun VehicleCard(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surface
         )
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -257,12 +312,21 @@ fun VehicleCard(
                 Icons.Default.DirectionsCar,
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
-                tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("${vehicle.brand} ${vehicle.model}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${vehicle.year} • ${vehicle.plates ?: stringResource(R.string.vehicles_no_plates)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${vehicle.brand} ${vehicle.model}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${vehicle.year} • ${vehicle.plates ?: stringResource(R.string.vehicles_no_plates)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(formatKm(vehicle.odometer), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
             if (isSelectionMode) {

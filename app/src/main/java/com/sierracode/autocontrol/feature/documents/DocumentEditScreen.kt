@@ -1,6 +1,9 @@
 package com.sierracode.autocontrol.feature.documents
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -43,11 +47,10 @@ class DocumentEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
-    // CORRECCIÓN BUG ID: Si viene vacío "", se convierte en null
     private val documentId: String? = savedStateHandle.get<String>("documentId")?.takeIf { it.isNotBlank() }
 
     var name by mutableStateOf("")
-    var type by mutableStateOf("") // D3: Inicia vacío
+    var type by mutableStateOf("")
     var issueDate by mutableStateOf<LocalDate?>(null)
     var expiryDate by mutableStateOf<LocalDate?>(null)
     var leadDays by mutableStateOf("30")
@@ -148,6 +151,13 @@ fun DocumentEditScreen(
     var expandedType by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
 
+    // OB1: pedir POST_NOTIFICATIONS en contexto, al guardar el primer documento
+    // con fecha de vencimiento. Si el usuario la deniega, el documento se guarda
+    // igual y el recordatorio interno se crea; solo no habrá notificación del sistema.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* concedido o denegado: guardamos igual */ vm.save(context, onDone) }
+
     BackHandler(enabled = vm.hasUnsavedChanges) {
         showDiscardDialog = true
     }
@@ -164,7 +174,9 @@ fun DocumentEditScreen(
                 }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+                TextButton(onClick = { showDiscardDialog = false }) {
+                    Text(stringResource(R.string.action_keep_editing))
+                }
             }
         )
     }
@@ -223,7 +235,6 @@ fun DocumentEditScreen(
                 }
             }
 
-            // Fecha de expedición
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
@@ -246,21 +257,25 @@ fun DocumentEditScreen(
             }
 
             if (showIssuePicker) {
-                val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+                val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+                    ?: System.currentTimeMillis()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showIssuePicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
+                            state.selectedDateMillis?.let {
+                                vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate())
+                            }
                             showIssuePicker = false
                         }) { Text("Aceptar") }
                     },
-                    dismissButton = { TextButton(onClick = { showIssuePicker = false }) { Text("Cancelar") } }
+                    dismissButton = {
+                        TextButton(onClick = { showIssuePicker = false }) { Text("Cancelar") }
+                    }
                 ) { DatePicker(state = state) }
             }
 
-            // Fecha de vencimiento
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
@@ -283,17 +298,22 @@ fun DocumentEditScreen(
             }
 
             if (showExpiryPicker) {
-                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+                    ?: System.currentTimeMillis()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showExpiryPicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
+                            state.selectedDateMillis?.let {
+                                vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate())
+                            }
                             showExpiryPicker = false
                         }) { Text("Aceptar") }
                     },
-                    dismissButton = { TextButton(onClick = { showExpiryPicker = false }) { Text("Cancelar") } }
+                    dismissButton = {
+                        TextButton(onClick = { showExpiryPicker = false }) { Text("Cancelar") }
+                    }
                 ) { DatePicker(state = state) }
             }
 
@@ -311,7 +331,11 @@ fun DocumentEditScreen(
             ) {
                 Icon(Icons.Default.AttachFile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (vm.selectedFileUri != null || vm.existingFileUri != null) "Cambiar archivo adjunto" else "Adjuntar archivo (Opcional)")
+                Text(
+                    if (vm.selectedFileUri != null || vm.existingFileUri != null)
+                        "Cambiar archivo adjunto"
+                    else "Adjuntar archivo (Opcional)"
+                )
             }
 
             if (vm.selectedFileUri != null || vm.existingFileUri != null) {
@@ -332,11 +356,24 @@ fun DocumentEditScreen(
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             Button(
-                onClick = { vm.save(context, onDone) },
+                onClick = {
+                    val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED &&
+                            vm.expiryDate != null
+
+                    if (needsPermission) {
+                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        vm.save(context, onDone)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp)) else Text("Guardar")
+                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp))
+                else Text("Guardar")
             }
         }
     }

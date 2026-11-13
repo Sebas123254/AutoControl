@@ -44,7 +44,7 @@ class VehicleEditViewModel @Inject constructor(
     var year by mutableStateOf("")
     var plates by mutableStateOf("")
     var odometer by mutableStateOf("")
-    var purchasePrice by mutableStateOf("") // NUEVO
+    var purchasePrice by mutableStateOf("")
 
     var currencyCode by mutableStateOf("MXN")
     var unitSystem by mutableStateOf("METRIC")
@@ -117,7 +117,7 @@ class VehicleEditViewModel @Inject constructor(
                     odometer = odoKm,
                     currencyCode = currencyCode,
                     unitSystem = unitSystem,
-                    purchasePriceCents = priceCents // <-- NUEVO
+                    purchasePriceCents = priceCents
                 )
                 repo.upsert(vehicle)
                 settingsStore.setActiveVehicle(vehicle.id)
@@ -153,9 +153,13 @@ fun VehicleEditScreen(
             title = { Text(stringResource(R.string.discard_changes_title)) },
             text = { Text(stringResource(R.string.discard_changes_msg)) },
             confirmButton = {
-                TextButton(onClick = { showDiscardDialog = false; onDone() }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { showDiscardDialog = false; onDone() }) {
+                    Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error)
+                }
             },
-            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) } }
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
         )
     }
 
@@ -183,8 +187,20 @@ fun VehicleEditScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text("¿Cómo registrarás este vehículo? *", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-            ExposedDropdownMenuBox(expanded = expandedUnits, onExpandedChange = { expandedUnits = !expandedUnits }) {
-                OutlinedTextField(value = if (vm.unitSystem == "METRIC") "Métrico (km, L)" else "Imperial (mi, gal)", onValueChange = {}, readOnly = true, label = { Text("Sistema de unidades") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedUnits) }, modifier = Modifier.menuAnchor().fillMaxWidth())
+            // V1: bloquear el cambio de sistema de unidades al editar (evita corrupción del odómetro).
+            ExposedDropdownMenuBox(
+                expanded = expandedUnits,
+                onExpandedChange = { if (!isEditing) expandedUnits = !expandedUnits }
+            ) {
+                OutlinedTextField(
+                    value = if (vm.unitSystem == "METRIC") "Métrico (km, L)" else "Imperial (mi, gal)",
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = !isEditing,
+                    label = { Text("Sistema de unidades") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedUnits) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
                 ExposedDropdownMenu(expanded = expandedUnits, onDismissRequest = { expandedUnits = false }) {
                     DropdownMenuItem(text = { Text("Métrico (km, L)") }, onClick = { vm.updateUnits("METRIC"); expandedUnits = false })
                     DropdownMenuItem(text = { Text("Imperial (mi, gal)") }, onClick = { vm.updateUnits("US"); expandedUnits = false })
@@ -192,7 +208,15 @@ fun VehicleEditScreen(
             }
 
             ExposedDropdownMenuBox(expanded = expandedCurrency, onExpandedChange = { if (!isEditing) expandedCurrency = !expandedCurrency }) {
-                OutlinedTextField(value = vm.currencyCode, onValueChange = {}, readOnly = true, enabled = !isEditing, label = { Text("Divisa") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCurrency) }, modifier = Modifier.menuAnchor().fillMaxWidth())
+                OutlinedTextField(
+                    value = vm.currencyCode,
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = !isEditing,
+                    label = { Text("Divisa") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCurrency) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
                 ExposedDropdownMenu(expanded = expandedCurrency, onDismissRequest = { expandedCurrency = false }) {
                     listOf("MXN", "USD", "CAD", "EUR", "GBP").forEach { code ->
                         DropdownMenuItem(text = { Text(code) }, onClick = { vm.updateCurrency(code); expandedCurrency = false })
@@ -211,7 +235,6 @@ fun VehicleEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // NUEVO CAMPO DE PRECIO DE COMPRA
             OutlinedTextField(
                 value = vm.purchasePrice,
                 onValueChange = { vm.updatePurchasePrice(it) },
@@ -224,11 +247,17 @@ fun VehicleEditScreen(
             vm.error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
             Button(
-                onClick = { vm.save { Toast.makeText(context, "Vehículo guardado correctamente", Toast.LENGTH_SHORT).show(); onDone() } },
+                onClick = {
+                    vm.save {
+                        Toast.makeText(context, "Vehículo guardado correctamente", Toast.LENGTH_SHORT).show()
+                        onDone()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary) else Text("Guardar Vehículo")
+                if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                else Text("Guardar Vehículo")
             }
         }
     }

@@ -17,10 +17,13 @@ interface ExpenseRepository {
     fun observeSum(id: String, from: Long, to: Long): Flow<Long?>
     fun observeByCategory(id: String, from: Long, to: Long): Flow<List<com.sierracode.autocontrol.data.local.dao.CategoryTotalRow>>
     suspend fun get(id: String): ExpenseEntity?
-    suspend fun saveWithDetails(expense: ExpenseEntity, fuel: FuelDetailEntity?, maint: MaintenanceDetailEntity?, attachment: AttachmentEntity? = null)
+    suspend fun saveWithDetails(
+        expense: ExpenseEntity,
+        fuel: FuelDetailEntity?,
+        maint: MaintenanceDetailEntity?,
+        attachment: AttachmentEntity? = null
+    )
     suspend fun delete(id: String)
-
-    // --- NUEVO ---
     suspend fun deleteMultiple(ids: List<String>)
 }
 
@@ -54,30 +57,40 @@ class ExpenseRepositoryImpl @Inject constructor(
     override suspend fun deleteMultiple(ids: List<String>) {
         if (ids.isEmpty()) return
 
-        // 1. Obtener los adjuntos ANTES de borrar la BD para saber qué archivos borrar
+        // 1. Adjuntos antes de borrar la BD (para saber qué archivos borrar)
         val attachments = db.attachmentDao().getForOwners("expense", ids)
 
-        // 2. Borrar en BD dentro de una transacción atómica
+        // 2. Transacción atómica
         db.withTransaction {
-            // Gracias al CASCADE de Room, fuel_details, maintenance_details se borran solos.
+            // O2: si algún objetivo está vinculado a un gasto que se está borrando,
+            // lo devolvemos a PENDIENTE. Sin esto queda "COMPRADO" apuntando a un gasto inexistente.
+            val affectedGoals = db.goalDao().getAllOnce().filter { it.linkedExpenseId in ids }
+            affectedGoals.forEach { goal ->
+                db.goalDao().upsert(
+                    goal.copy(
+                        status = "PENDIENTE",
+                        linkedExpenseId = null,
+                        completedAt = null
+                    )
+                )
+            }
+
+            // CASCADE de Room borra fuel_details y maintenance_details
             expenses.deleteByIds(ids)
-            // Adjuntos no tienen FK, así que los borramos manualmente
+            // Attachments no tienen FK: borrar manualmente
             attachments.forEach { db.attachmentDao().deleteById(it.id) }
         }
 
-        // 3. Borrar archivos físicos (solo si la BD no lanzó excepción)
+        // 3. Archivos físicos (solo si la BD no lanzó excepción)
         withContext(Dispatchers.IO) {
             attachments.forEach { attachment ->
                 try {
                     val path = Uri.parse(attachment.uri).path
                     if (path != null) {
                         val file = File(path)
-                        if (file.exists()) {
-                            file.delete()
-                        }
+                        if (file.exists()) file.delete()
                     }
                 } catch (e: Exception) {
-                    // Un archivo que ya no existe no debe romper el flujo
                     e.printStackTrace()
                 }
             }

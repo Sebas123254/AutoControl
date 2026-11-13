@@ -13,13 +13,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.data.local.entity.ReminderEntity
 import com.sierracode.autocontrol.data.repository.ReminderRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -106,28 +106,11 @@ fun RemindersScreen(
         }
     ) { padding ->
         if (reminders.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    Icons.Default.Notifications,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(stringResource(R.string.reminders_empty_title), style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.reminders_empty_desc),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(Modifier.fillMaxSize().padding(padding).padding(16.dp), contentAlignment = Alignment.Center) {
+                EmptyStateCard(
+                    icon = Icons.Default.Notifications,
+                    title = stringResource(R.string.reminders_empty_title),
+                    description = stringResource(R.string.reminders_empty_desc)
                 )
             }
         } else {
@@ -154,7 +137,6 @@ fun ReminderCard(
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
-    // CORRECCIÓN: Conversión de milisegundos UTC a LocalDate en la zona horaria local
     val dateEpochDay = Instant.ofEpochMilli(reminder.triggerAtEpochMillis)
         .atZone(ZoneId.systemDefault())
         .toLocalDate()

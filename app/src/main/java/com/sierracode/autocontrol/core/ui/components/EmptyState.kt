@@ -10,6 +10,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+@Deprecated(
+    message = "Usa EmptyStateCard(icon, title, description, actionLabel, onActionClick). " +
+            "Se eliminará al final de Fase 3 tras migrar las pantallas.",
+    level = DeprecationLevel.WARNING
+)
 @Composable
 fun EmptyState(
     icon: ImageVector,

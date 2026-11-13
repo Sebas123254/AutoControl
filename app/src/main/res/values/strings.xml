@@ -218,4 +218,14 @@
         <item quantity="one">%d gasto</item>
         <item quantity="other">%d gastos</item>
     </plurals>
+
+    <!-- Sistema de diseño -->
+    <string name="action_undo">Deshacer</string>
+    <string name="action_confirm">Confirmar</string>
+    <string name="action_ok">Aceptar</string>
+    <string name="action_yes">Sí</string>
+    <string name="status_ok">Al día</string>
+    <string name="status_warning">Próximo</string>
+    <string name="status_error">Vencido</string>
+    <string name="status_info">Información</string>
 </resources>

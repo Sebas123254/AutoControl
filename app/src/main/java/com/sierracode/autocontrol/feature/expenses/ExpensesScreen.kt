@@ -1,6 +1,5 @@
 package com.sierracode.autocontrol.feature.expenses
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -38,7 +37,7 @@ import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatMoneyCents
-import com.sierracode.autocontrol.core.ui.components.EmptyState
+import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.repository.AttachmentRepository
 import com.sierracode.autocontrol.data.repository.CategoryRepository
@@ -74,7 +73,6 @@ class ExpensesViewModel @Inject constructor(
     var isSearchActive by mutableStateOf(false)
         private set
 
-    // RENOMBRADO: Para evitar choque con el setter generado automáticamente por JVM
     fun updateSearchActive(active: Boolean) {
         isSearchActive = active
         if (!active) queryFlow.value = ""
@@ -117,7 +115,6 @@ class ExpensesViewModel @Inject constructor(
         private set
 
     init {
-        // Si cambian los filtros mientras estamos seleccionando, quitamos los que ya no se ven
         viewModelScope.launch {
             filteredExpenses.collect { visible ->
                 if (isSelectionMode) {
@@ -131,7 +128,6 @@ class ExpensesViewModel @Inject constructor(
     }
 
     fun loadVehicle(id: String) { vehicleIdFlow.value = id }
-
     fun selectExpense(expense: ExpenseEntity) { selectedExpense = expense }
     fun dismissDialog() { selectedExpense = null }
 
@@ -184,6 +180,7 @@ fun ExpensesScreen(
     vehicleId: String,
     vehicleName: String,
     onEditClick: (String) -> Unit,
+    onAddClick: () -> Unit,
     vm: ExpensesViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
@@ -196,6 +193,7 @@ fun ExpensesScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCategorySheet by remember { mutableStateOf(false) }
     var showMonthPicker by remember { mutableStateOf(false) }
+    var blockedEditMessage by remember { mutableStateOf<String?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequester = remember { FocusRequester() }
@@ -203,6 +201,18 @@ fun ExpensesScreen(
 
     BackHandler(enabled = vm.isSelectionMode) { vm.clearSelection() }
     BackHandler(enabled = vm.isSearchActive) { vm.updateSearchActive(false) }
+
+    if (blockedEditMessage != null) {
+        AlertDialog(
+            onDismissRequest = { blockedEditMessage = null },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Edición no disponible aquí") },
+            text = { Text(blockedEditMessage!!) },
+            confirmButton = {
+                TextButton(onClick = { blockedEditMessage = null }) { Text("Entendido") }
+            }
+        )
+    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -274,6 +284,13 @@ fun ExpensesScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            if (!vm.isSelectionMode && !vm.isSearchActive) {
+                FloatingActionButton(onClick = onAddClick) {
+                    Icon(Icons.Default.Add, contentDescription = "Agregar Gasto")
+                }
+            }
+        },
         topBar = {
             if (vm.isSelectionMode) {
                 TopAppBar(
@@ -391,16 +408,14 @@ fun ExpensesScreen(
 
             if (expenses.isEmpty()) {
                 val isFiltering = filterState.query.isNotBlank() || filterState.period != ExpensePeriod.ALL || filterState.categoryIds.isNotEmpty()
-                EmptyState(
-                    icon = Icons.Default.Receipt,
-                    title = if (isFiltering) "Sin resultados" else stringResource(R.string.expenses_empty),
-                    description = if (isFiltering) "No encontramos gastos que coincidan con los filtros." else "Registra tu primer gasto para comenzar.",
-                    modifier = Modifier.weight(1f)
-                )
-                if (isFiltering) {
-                    Button(onClick = { vm.clearFilters() }, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 32.dp)) {
-                        Text("Limpiar filtros")
-                    }
+                Box(Modifier.weight(1f).padding(16.dp), contentAlignment = Alignment.Center) {
+                    EmptyStateCard(
+                        icon = Icons.Default.Receipt,
+                        title = if (isFiltering) "Sin resultados" else stringResource(R.string.expenses_empty),
+                        description = if (isFiltering) "No encontramos gastos que coincidan con los filtros." else "Registra tu primer gasto para comenzar.",
+                        actionLabel = if (isFiltering) "Limpiar filtros" else "Registrar gasto",
+                        onActionClick = { if (isFiltering) vm.clearFilters() else onAddClick() }
+                    )
                 }
             } else {
                 LazyColumn(
@@ -414,7 +429,16 @@ fun ExpensesScreen(
                             expense = expense,
                             isSelectionMode = vm.isSelectionMode,
                             isSelected = isSelected,
-                            onClick = { if (vm.isSelectionMode) vm.toggleSelection(expense.id) else vm.selectExpense(expense) },
+                            onClick = {
+                                if (vm.isSelectionMode) {
+                                    vm.toggleSelection(expense.id)
+                                } else if (expense.type == "FUEL" || expense.type == "MAINTENANCE") {
+                                    blockedEditMessage = "Para modificar esta carga o servicio, bórralo y vuelve a registrarlo desde su pantalla original (Gasolina o Mantenimiento)."
+                                } else {
+                                    vm.selectExpense(expense)
+                                    onEditClick(expense.id)
+                                }
+                            },
                             onLongClick = { vm.enterSelectionMode(expense.id) }
                         )
                     }

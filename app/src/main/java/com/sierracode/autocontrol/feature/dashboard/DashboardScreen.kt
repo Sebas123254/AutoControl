@@ -67,7 +67,8 @@ class DashboardViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val expenseRepo: ExpenseRepository,
     private val fuelRepo: FuelRepository,
-    private val scheduleRepo: ScheduleRepository
+    private val scheduleRepo: ScheduleRepository,
+    private val reminderRepo: ReminderRepository
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
     private val summaryPeriodFlow = MutableStateFlow(SummaryPeriod.THIS_MONTH)
@@ -88,6 +89,21 @@ class DashboardViewModel @Inject constructor(
             expenseRepo.observeSum(id, start, end).map { it ?: 0L }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    // DB1: gasto histórico, independiente del periodo seleccionado arriba.
+    // Se usa SOLO para "Costo total acumulado" (precio de compra + gastos).
+    val allTimeSpent = vehicleIdFlow.flatMapLatest { id ->
+        if (id == null) flowOf(0L) else expenseRepo.observeSum(id, 0L, Long.MAX_VALUE).map { it ?: 0L }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    // DB2: recordatorios que vencen en los próximos 7 días o ya vencidos.
+    // Se usa SOLO para el badge de la barra superior (junto con mantenimientos).
+    val dueReminders = vehicleIdFlow.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else reminderRepo.observeByVehicle(id).map { list ->
+            val horizon = System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000
+            list.filter { it.enabled && it.triggerAtEpochMillis <= horizon }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val costPerKm = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(null) else combine(
@@ -120,7 +136,6 @@ class DashboardViewModel @Inject constructor(
                         remindBeforeKm = s.remindBeforeKm,
                         remindBeforeDays = s.remindBeforeDays
                     )
-
                     val target = if (s.lastOdometer != null && s.intervalKm != null) s.lastOdometer + s.intervalKm else null
                     val progress = if (target != null && s.lastOdometer != null && target > s.lastOdometer) {
                         val avanzado = (vehicle.odometer - s.lastOdometer).toFloat()
@@ -198,6 +213,8 @@ fun DashboardScreen(
     val vehicle by vm.vehicle.collectAsState()
     val allVehicles by vm.allVehicles.collectAsState()
     val totalSpent by vm.totalSpent.collectAsState()
+    val allTimeSpent by vm.allTimeSpent.collectAsState()
+    val dueReminders by vm.dueReminders.collectAsState()
     val costPerKm by vm.costPerKm.collectAsState()
     val fuelStats by vm.fuelStats.collectAsState()
     val schedules by vm.schedules.collectAsState()
@@ -208,7 +225,9 @@ fun DashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val hasPendingAlerts = schedules.any { it.urgency == Urgency.OVERDUE || it.urgency == Urgency.SOON }
+    // DB2: el badge también considera documentos/recordatorios próximos a vencer.
+    val hasPendingAlerts = schedules.any { it.urgency == Urgency.OVERDUE || it.urgency == Urgency.SOON } ||
+            dueReminders.isNotEmpty()
 
     if (scheduleToDelete != null) {
         AlertDialog(
@@ -217,8 +236,11 @@ fun DashboardScreen(
             text = { Text("¿Deseas eliminar la programación de '${scheduleToDelete!!.name}'? El historial de gastos no se borrará.") },
             confirmButton = {
                 TextButton(onClick = {
+                    val nombre = scheduleToDelete!!.name
                     vm.deleteSchedule(scheduleToDelete!!.id)
                     scheduleToDelete = null
+                    // DB7: feedback
+                    scope.launch { snackbarHostState.showSnackbar("Mantenimiento '$nombre' eliminado") }
                 }) {
                     Text("Eliminar", color = MaterialTheme.colorScheme.error)
                 }
@@ -234,9 +256,19 @@ fun DashboardScreen(
             text = {
                 Column {
                     schedules.forEach { s ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(s.name)
-                            TextButton(onClick = { scheduleToDelete = s; showAllSchedules = false }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                            TextButton(onClick = {
+                                // DB7 (bis): feedback desde la lista completa
+                                val nombre = s.name
+                                vm.deleteSchedule(s.id)
+                                showAllSchedules = false
+                                scope.launch { snackbarHostState.showSnackbar("Mantenimiento '$nombre' eliminado") }
+                            }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
@@ -245,7 +277,6 @@ fun DashboardScreen(
         )
     }
 
-    // BOTTOM SHEET DE EDICIÓN
     if (vm.scheduleToEdit != null) {
         val s = vm.scheduleToEdit!!.originalSchedule
         var intervalKm by remember { mutableStateOf(s.intervalKm?.toString() ?: "") }
@@ -257,7 +288,10 @@ fun DashboardScreen(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         ModalBottomSheet(onDismissRequest = { vm.openScheduleEditor(null) }, sheetState = sheetState) {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 Text("Editar: ${s.name}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
                 OutlinedTextField(
@@ -306,7 +340,12 @@ fun DashboardScreen(
                         return@Button
                     }
 
-                    vm.updateSchedule(s.copy(intervalKm = newKm, intervalMonths = newMonths, remindBeforeKm = newRemKm, remindBeforeDays = newRemDays))
+                    vm.updateSchedule(s.copy(
+                        intervalKm = newKm,
+                        intervalMonths = newMonths,
+                        remindBeforeKm = newRemKm,
+                        remindBeforeDays = newRemDays
+                    ))
                     scope.launch { snackbarHostState.showSnackbar("Mantenimiento actualizado") }
                 }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
                     Text("Guardar cambios")
@@ -334,11 +373,20 @@ fun DashboardScreen(
                     val canSwitch = allVehicles.size > 1
                     Box {
                         Row(
-                            modifier = Modifier.clip(MaterialTheme.shapes.small).clickable(enabled = canSwitch) { showSwitchMenu = true }.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.clip(MaterialTheme.shapes.small)
+                                .clickable(enabled = canSwitch) { showSwitchMenu = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = vehicle?.let { "${it.brand} ${it.model}" } ?: stringResource(R.string.dashboard_title), fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            if (canSwitch) { Icon(imageVector = Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.cd_switch_vehicle)) }
+                            Text(
+                                text = vehicle?.let { "${it.brand} ${it.model}" } ?: stringResource(R.string.dashboard_title),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            if (canSwitch) {
+                                Icon(imageVector = Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.cd_switch_vehicle))
+                            }
                         }
                         DropdownMenu(expanded = showSwitchMenu, onDismissRequest = { showSwitchMenu = false }) {
                             allVehicles.forEach { v ->
@@ -350,25 +398,38 @@ fun DashboardScreen(
                         }
                     }
                 },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a Mis vehículos") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a Mis vehículos")
+                    }
+                },
                 actions = {
                     IconButton(onClick = onOpenReminders) {
                         BadgedBox(badge = { if (hasPendingAlerts) { Badge(modifier = Modifier.padding(end = 4.dp)) } }) {
                             Icon(Icons.Default.Notifications, contentDescription = "Recordatorios")
                         }
                     }
-                    IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, contentDescription = "Ajustes") }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Ajustes")
+                    }
                 }
             )
         }
     ) { padding ->
         if (vehicle == null) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         } else {
             val v = vehicle!!
-            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-
-                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.DirectionsCar, contentDescription = null, modifier = Modifier.size(40.dp))
                         Spacer(Modifier.width(16.dp))
@@ -390,38 +451,75 @@ fun DashboardScreen(
 
                 val topSchedule = schedules.firstOrNull()
                 if (topSchedule != null) {
-                    SectionHeader("Próximo mantenimiento", if (schedules.size > 1) "Ver todos" else null) { if (schedules.size > 1) showAllSchedules = true }
+                    SectionHeader("Próximo mantenimiento", if (schedules.size > 1) "Ver todos" else null) {
+                        if (schedules.size > 1) showAllSchedules = true
+                    }
                     MaintenanceCard(topSchedule, onClick = { vm.openScheduleEditor(topSchedule) })
                 }
 
                 SectionHeader("Resumen financiero")
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = selectedPeriod == SummaryPeriod.THIS_MONTH, onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_MONTH) }, label = { Text("Este mes") }, modifier = Modifier.weight(1f))
-                    FilterChip(selected = selectedPeriod == SummaryPeriod.ALL_TIME, onClick = { vm.setSummaryPeriod(SummaryPeriod.ALL_TIME) }, label = { Text("Histórico") }, modifier = Modifier.weight(1f))
+                    FilterChip(
+                        selected = selectedPeriod == SummaryPeriod.THIS_MONTH,
+                        onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_MONTH) },
+                        label = { Text("Este mes") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = selectedPeriod == SummaryPeriod.ALL_TIME,
+                        onClick = { vm.setSummaryPeriod(SummaryPeriod.ALL_TIME) },
+                        label = { Text("Histórico") },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    MetricCard(title = if (selectedPeriod == SummaryPeriod.THIS_MONTH) "Gasto del mes" else "Gasto histórico", value = formatMoneyCents(totalSpent), modifier = Modifier.weight(1f))
+                    MetricCard(
+                        title = if (selectedPeriod == SummaryPeriod.THIS_MONTH) "Gasto del mes" else "Gasto histórico",
+                        value = formatMoneyCents(totalSpent),
+                        modifier = Modifier.weight(1f)
+                    )
+                    // DB4: label aclara que es histórico.
                     if (costPerKm != null) {
-                        MetricCard(title = "Costo por km", value = formatCostPerDistance(costPerKm), modifier = Modifier.weight(1f))
+                        MetricCard(
+                            title = "Costo por km histórico",
+                            value = formatCostPerDistance(costPerKm),
+                            modifier = Modifier.weight(1f)
+                        )
                     } else {
-                        MetricCard(title = "Costo por km", value = "—", modifier = Modifier.weight(1f))
+                        MetricCard(
+                            title = "Costo por km histórico",
+                            value = "—",
+                            modifier = Modifier.weight(1f),
+                            subtitle = "Necesitas 2 gastos con kilometraje"
+                        )
                     }
-                }
-                if (costPerKm == null) {
-                    Text("Registra al menos 2 gastos con kilometraje para calcular el costo por km.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 if (v.purchasePriceCents != null) {
-                    val totalCost = calculateTotalCost(v.purchasePriceCents, totalSpent)
+                    // DB1: SIEMPRE histórico, no el filtrado por periodo.
+                    val totalCost = calculateTotalCost(v.purchasePriceCents, allTimeSpent)
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                                Text("Costo total acumulado", style = MaterialTheme.typography.labelMedium)
-                                Text("Precio de compra: ${formatMoneyCents(v.purchasePriceCents)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Text("Costo total acumulado (histórico)", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    "Precio de compra: ${formatMoneyCents(v.purchasePriceCents)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Spacer(Modifier.height(8.dp))
-                            Text(formatMoneyCents(totalCost), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text(
+                                formatMoneyCents(totalCost),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 } else {
@@ -435,7 +533,10 @@ fun DashboardScreen(
 
                 SectionHeader("Rendimiento")
                 if (fuelStats?.avgKmL != null) {
-                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(formatEfficiency(fuelStats!!.avgKmL), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                             Text("Promedio histórico", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -476,12 +577,25 @@ fun SectionHeader(title: String, actionLabel: String? = null, onActionClick: () 
 }
 
 @Composable
-fun MetricCard(title: String, value: String, modifier: Modifier = Modifier) {
+fun MetricCard(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
+) {
     Card(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -516,13 +630,22 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(schedule.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(16.dp), tint = contentColor)
                 }
-                StatusChip(text = statusText, icon = statusIcon, containerColor = contentColor.copy(alpha = 0.1f), contentColor = contentColor)
+                StatusChip(
+                    text = statusText,
+                    icon = statusIcon,
+                    containerColor = contentColor.copy(alpha = 0.1f),
+                    contentColor = contentColor
+                )
             }
             Spacer(Modifier.height(8.dp))
             if (schedule.targetOdometer != null && schedule.remainingKm != null) {
@@ -533,7 +656,11 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
                     trackColor = contentColor.copy(alpha = 0.2f)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Faltan ${formatKm(schedule.remainingKm)} · a los ${formatKm(schedule.targetOdometer)}", style = MaterialTheme.typography.bodySmall, color = contentColor)
+                Text(
+                    "Faltan ${formatKm(schedule.remainingKm)} · a los ${formatKm(schedule.targetOdometer)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor
+                )
             }
         }
     }

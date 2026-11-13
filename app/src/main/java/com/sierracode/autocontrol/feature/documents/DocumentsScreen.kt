@@ -7,14 +7,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,6 +23,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.ui.components.StatusChip
+import com.sierracode.autocontrol.core.ui.components.StatusVariant
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
 import com.sierracode.autocontrol.data.repository.DocumentRepository
 import com.sierracode.autocontrol.domain.calc.DocumentStatus
@@ -49,9 +51,7 @@ class DocumentsViewModel @Inject constructor(
         if (id == null) flowOf(emptyList()) else repo.observeByVehicle(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun loadVehicle(id: String) {
-        vehicleIdFlow.value = id
-    }
+    fun loadVehicle(id: String) { vehicleIdFlow.value = id }
 
     fun deleteDocument(id: String) = viewModelScope.launch { repo.delete(id) }
 }
@@ -63,12 +63,10 @@ fun DocumentsScreen(
     vehicleName: String,
     onAddClick: () -> Unit,
     onEditClick: (String) -> Unit,
-    onDocumentClick: (String) -> Unit, // <-- NUEVO
+    onDocumentClick: (String) -> Unit,
     vm: DocumentsViewModel = hiltViewModel()
 ) {
-    LaunchedEffect(vehicleId) {
-        vm.loadVehicle(vehicleId)
-    }
+    LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
     val docs by vm.documents.collectAsState()
     val today = LocalDate.now().toEpochDay()
@@ -126,30 +124,40 @@ fun DocumentsScreen(
                     val expiry = doc.expiryDateEpochDay ?: today
                     val eval = evaluateDocument(expiry, today, doc.reminderLeadDays)
 
-                    val color = when(eval.status) {
-                        DocumentStatus.EXPIRED -> Color(0xFFC0392B)
-                        DocumentStatus.EXPIRING_SOON -> Color(0xFFE6A23C)
-                        DocumentStatus.VALID -> Color(0xFF2FA39A)
-                    }
-                    val statusText = when(eval.status) {
-                        DocumentStatus.EXPIRED -> "Venció hace ${-eval.daysRemaining} días"
-                        DocumentStatus.EXPIRING_SOON -> "Vence en ${eval.daysRemaining} días"
-                        DocumentStatus.VALID -> "Vigente"
+                    val variant: StatusVariant
+                    val statusIcon: ImageVector
+                    val statusText: String
+                    when (eval.status) {
+                        DocumentStatus.EXPIRED -> {
+                            variant = StatusVariant.ERROR
+                            statusIcon = Icons.Default.Warning
+                            statusText = "Venció hace ${-eval.daysRemaining} días"
+                        }
+                        DocumentStatus.EXPIRING_SOON -> {
+                            variant = StatusVariant.WARNING
+                            statusIcon = Icons.Default.Info
+                            statusText = "Vence en ${eval.daysRemaining} días"
+                        }
+                        DocumentStatus.VALID -> {
+                            variant = StatusVariant.OK
+                            statusIcon = Icons.Default.CheckCircle
+                            statusText = "Vigente"
+                        }
                     }
 
                     DocumentCard(
                         doc = doc,
-                        color = color,
+                        variant = variant,
+                        statusIcon = statusIcon,
                         statusText = statusText,
-                        onClick = { onDocumentClick(doc.id) }, // Navega al detalle
-                        onLongClick = { docMenuTarget = doc }  // Abre menú contextual
+                        onClick = { onDocumentClick(doc.id) },
+                        onLongClick = { docMenuTarget = doc }
                     )
                 }
             }
         }
     }
 
-    // Menú contextual de pulsación larga
     if (docMenuTarget != null) {
         AlertDialog(
             onDismissRequest = { docMenuTarget = null },
@@ -178,7 +186,8 @@ fun DocumentsScreen(
 @Composable
 fun DocumentCard(
     doc: DocumentEntity,
-    color: Color,
+    variant: StatusVariant,
+    statusIcon: ImageVector,
     statusText: String,
     onClick: () -> Unit,
     onLongClick: () -> Unit
@@ -189,15 +198,21 @@ fun DocumentCard(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Warning, contentDescription = null, tint = color)
-            Spacer(Modifier.width(16.dp))
-
-            Column(Modifier.weight(1f)) {
-                Text(doc.name, fontWeight = FontWeight.Bold)
-                Text("Vence: ${formatDate(doc.expiryDateEpochDay)}", style = MaterialTheme.typography.bodySmall)
-                Text(statusText, color = color, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(doc.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                StatusChip(text = statusText, icon = statusIcon, variant = variant)
             }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Vence: ${formatDate(doc.expiryDateEpochDay)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

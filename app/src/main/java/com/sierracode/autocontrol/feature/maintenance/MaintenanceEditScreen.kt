@@ -5,18 +5,26 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -30,6 +38,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.*
@@ -43,6 +52,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -66,6 +76,7 @@ class MaintenanceEditViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     var selectedCategory by mutableStateOf<CategoryEntity?>(null)
+    var dateEpochDay by mutableStateOf(LocalDate.now().toEpochDay())
     var amount by mutableStateOf("")
     var odometer by mutableStateOf("")
     var workshop by mutableStateOf("")
@@ -93,6 +104,7 @@ class MaintenanceEditViewModel @Inject constructor(
     }
 
     fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
+    fun updateDate(newDate: LocalDate) { dateEpochDay = newDate.toEpochDay(); hasUnsavedChanges = true }
     fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true }
     fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
     fun updateWorkshop(newWorkshop: String) { workshop = newWorkshop; hasUnsavedChanges = true }
@@ -117,6 +129,11 @@ class MaintenanceEditViewModel @Inject constructor(
             if (unitSystem == UnitSystem.METRIC) nextOdoInput.roundToLong() else UnitConverter.milesToKm(nextOdoInput)
         } else null
 
+        if (odoKm != null && nextOdoKm != null && nextOdoKm <= odoKm) {
+            error = "El próximo servicio debe ser mayor al odómetro actual."
+            return
+        }
+
         viewModelScope.launch {
             isLoading = true
             try {
@@ -127,7 +144,7 @@ class MaintenanceEditViewModel @Inject constructor(
                     type = "MAINTENANCE",
                     categoryId = selectedCategory!!.id,
                     amountCents = (amt * 100).roundToLong(),
-                    dateEpochDay = LocalDate.now().toEpochDay(),
+                    dateEpochDay = dateEpochDay,
                     odometer = odoKm,
                     description = selectedCategory!!.name
                 )
@@ -156,7 +173,7 @@ class MaintenanceEditViewModel @Inject constructor(
                         val interval = if (nextOdoKm != null) (nextOdoKm - odoKm) else existingSchedule.intervalKm
                         val updatedSchedule = existingSchedule.copy(
                             lastOdometer = odoKm,
-                            lastDateEpochDay = LocalDate.now().toEpochDay(),
+                            lastDateEpochDay = dateEpochDay,
                             intervalKm = interval
                         )
                         scheduleRepo.upsert(updatedSchedule)
@@ -167,14 +184,13 @@ class MaintenanceEditViewModel @Inject constructor(
                             name = selectedCategory!!.name,
                             intervalKm = nextOdoKm - odoKm,
                             lastOdometer = odoKm,
-                            lastDateEpochDay = LocalDate.now().toEpochDay()
+                            lastDateEpochDay = dateEpochDay
                         )
                         scheduleRepo.upsert(newSchedule)
                         updatedScheduleId = newSchedule.id
                     }
                 }
 
-                // CORRECCIÓN: Se asigna el scheduleId al detalle para vincular el gasto con la programación
                 val detail = MaintenanceDetailEntity(
                     expenseId = expenseId,
                     scheduleId = updatedScheduleId,
@@ -186,7 +202,7 @@ class MaintenanceEditViewModel @Inject constructor(
                 expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
                 if (updatedScheduleId != null) {
-                    val triggerMillis = LocalDate.now().plusMonths(1)
+                    val triggerMillis = LocalDate.ofEpochDay(dateEpochDay).plusMonths(1)
                         .atStartOfDay(ZoneId.systemDefault())
                         .toInstant()
                         .toEpochMilli()
@@ -228,6 +244,9 @@ fun MaintenanceEditScreen(
     val categories by vm.maintCategories.collectAsState()
     var expanded by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
@@ -235,6 +254,12 @@ fun MaintenanceEditScreen(
         if (vm.selectedCategory == null && categories.isNotEmpty()) {
             vm.selectedCategory = categories.firstOrNull { it.id == "maint_general" } ?: categories.first()
         }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) vm.updateImage(cameraUri)
     }
 
     val photoPicker = rememberLauncherForActivityResult(
@@ -262,6 +287,24 @@ fun MaintenanceEditScreen(
                 TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
             }
         )
+    }
+
+    if (showDatePicker) {
+        val initialMillis = Instant.ofEpochSecond(vm.dateEpochDay * 86400).toEpochMilli()
+        val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let {
+                        val date = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+                        vm.updateDate(date)
+                    }
+                    showDatePicker = false
+                }) { Text("Aceptar") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") } }
+        ) { DatePicker(state = state) }
     }
 
     val unitLabel = if (config.unitSystem == UnitSystem.METRIC) "km" else "mi"
@@ -308,6 +351,26 @@ fun MaintenanceEditScreen(
                         )
                     }
                 }
+            }
+
+            // Campo Fecha
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = formatDate(vm.dateEpochDay),
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = false,
+                    label = { Text("Fecha del servicio *") },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir fecha") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(modifier = Modifier.matchParentSize().clickable { showDatePicker = true })
             }
 
             OutlinedTextField(
@@ -358,22 +421,59 @@ fun MaintenanceEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            OutlinedButton(
-                onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(if (vm.selectedImageUri == null) R.string.maint_edit_receipt else R.string.maint_edit_receipt_change))
+            // Botones Cámara / Galería
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val uri = ImageUtils.createTempImageUri(context)
+                        if (uri != null) {
+                            cameraUri = uri
+                            cameraLauncher.launch(uri)
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (vm.selectedImageUri == null) "Tomar Foto" else "Repetir Foto", maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Galería", maxLines = 1)
+                }
             }
 
+            // Vista previa con botón para eliminar
             if (vm.selectedImageUri != null) {
-                AsyncImage(
-                    model = vm.selectedImageUri,
-                    contentDescription = stringResource(R.string.expense_edit_receipt_desc),
-                    modifier = Modifier.fillMaxWidth().height(200.dp),
-                    contentScale = ContentScale.Crop
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                ) {
+                    AsyncImage(
+                        model = vm.selectedImageUri,
+                        contentDescription = stringResource(R.string.expense_edit_receipt_desc),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    IconButton(
+                        onClick = { vm.updateImage(null) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Eliminar foto",
+                            tint = Color.White
+                        )
+                    }
+                }
             }
 
             vm.error?.let {

@@ -1,25 +1,30 @@
 package com.sierracode.autocontrol.feature.stats
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,7 +33,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
-import com.sierracode.autocontrol.core.ui.LocalAppConfig
+import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.data.repository.CategoryRepository
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,6 +51,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 data class CategoryStat(val name: String, val totalCents: Long, val percentage: Float)
 data class MonthlyStat(val monthLabel: String, val totalCents: Long)
@@ -101,13 +107,10 @@ class StatsViewModel @Inject constructor(
 fun StatsScreen(
     vehicleId: String,
     vehicleName: String,
-    onOpenSettings: () -> Unit, // <-- NUEVO
+    onOpenExpenses: () -> Unit,
     vm: StatsViewModel = hiltViewModel()
 ) {
-    val config = LocalAppConfig.current // <-- NUEVO
-    LaunchedEffect(vehicleId) {
-        vm.loadVehicle(vehicleId)
-    }
+    LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
     val monthlyStats by vm.monthlyStats.collectAsState()
     val categoryStats by vm.categoryStats.collectAsState()
@@ -131,8 +134,14 @@ fun StatsScreen(
         }
     ) { padding ->
         if (monthlyStats.isEmpty() && categoryStats.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.stats_empty), style = MaterialTheme.typography.bodyLarge)
+            Box(Modifier.fillMaxSize().padding(padding).padding(16.dp), contentAlignment = Alignment.Center) {
+                EmptyStateCard(
+                    icon = Icons.Default.Receipt,
+                    title = stringResource(R.string.stats_empty),
+                    description = "Registra tu primer gasto para empezar a ver estadísticas de tu vehículo.",
+                    actionLabel = "Ir a Gastos",
+                    onActionClick = onOpenExpenses
+                )
             }
         } else {
             LazyColumn(
@@ -141,56 +150,14 @@ fun StatsScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.stats_monthly_evolution),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (!config.isPro) {
-                            Icon(Icons.Default.Star, contentDescription = "Pro", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
-                        }
-                    }
+                    Text(
+                        stringResource(R.string.stats_monthly_evolution),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(16.dp))
 
-                    if (!config.isPro) {
-                        // Bloqueo PRO
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp).fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.size(40.dp)
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = "Función exclusiva PRO",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = "Actualiza a PRO para ver la gráfica de evolución mensual de tus gastos.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(Modifier.height(16.dp))
-                                Button(onClick = onOpenSettings) {
-                                    Text("Ver opciones")
-                                }
-                            }
-                        }
-                    } else if (monthlyStats.size >= 2) {
+                    if (monthlyStats.size >= 2) {
                         CustomLineChart(monthlyStats, MaterialTheme.colorScheme.primary)
                     } else {
                         Card(
@@ -246,23 +213,59 @@ fun StatsScreen(
 
 @Composable
 fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
+    if (data.isEmpty()) return
+
     val maxVal = data.maxOfOrNull { it.totalCents }?.toFloat() ?: 1f
     val minVal = data.minOfOrNull { it.totalCents }?.toFloat() ?: 0f
     val range = max(1f, maxVal - minVal)
 
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val dotInnerColor = MaterialTheme.colorScheme.surface
+    val tooltipBgColor = MaterialTheme.colorScheme.inverseSurface
+    val tooltipTextColor = MaterialTheme.colorScheme.inverseOnSurface
+
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
+    val textMeasurer = rememberTextMeasurer()
+
+    // SOLUCIÓN: Evaluar en contexto composable (línea a línea) y guardar la lista resultante.
+    val formattedAmounts = data.map { formatMoneyCents(it.totalCents) }
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(240.dp)
-            .padding(top = 16.dp, end = 16.dp, start = 16.dp, bottom = 32.dp)
+            .padding(top = 16.dp, end = 32.dp, start = 48.dp, bottom = 32.dp)
+            .pointerInput(data) {
+                detectTapGestures { offset ->
+                    val stepX = if (data.size > 1) size.width / (data.size - 1) else size.width
+                    val index = (offset.x / stepX).roundToInt().coerceIn(0, data.size - 1)
+                    selectedIndex = if (selectedIndex == index) null else index
+                }
+            }
     ) {
-        if (data.isEmpty()) return@Canvas
-
         val width = size.width
         val height = size.height
         val stepX = if (data.size > 1) width / (data.size - 1) else width
+
+        // Dibujar líneas de fondo (Eje Y)
+        val ySteps = 4
+        for (i in 0..ySteps) {
+            val y = height - (height * i / ySteps)
+            drawLine(
+                color = textColor.copy(alpha = 0.2f),
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = 2f
+            )
+            val valAtY = minVal + (range * i / ySteps)
+            val label = if (valAtY >= 1000) "$${(valAtY/1000).roundToInt()}k" else "$${valAtY.roundToInt()}"
+            drawText(
+                textMeasurer = textMeasurer,
+                text = label,
+                topLeft = Offset(-40.dp.toPx(), y - 8.dp.toPx()),
+                style = TextStyle(color = textColor, fontSize = 10.sp)
+            )
+        }
 
         val points = data.mapIndexed { index, stat ->
             val x = index * stepX
@@ -281,26 +284,45 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
             }
         }
 
-        drawPath(
-            path = path,
-            color = lineColor,
-            style = Stroke(width = 6f, cap = StrokeCap.Round)
-        )
+        drawPath(path = path, color = lineColor, style = Stroke(width = 6f, cap = StrokeCap.Round))
 
         points.forEachIndexed { index, point ->
             drawCircle(color = lineColor, radius = 8f, center = point)
-            drawCircle(color = Color.White, radius = 4f, center = point)
+            drawCircle(color = dotInnerColor, radius = 4f, center = point)
 
-            drawContext.canvas.nativeCanvas.drawText(
-                data[index].monthLabel,
-                point.x,
-                size.height + 24.dp.toPx(),
-                android.graphics.Paint().apply {
-                    color = textColor.toArgb()
-                    textSize = 12.sp.toPx()
-                    textAlign = android.graphics.Paint.Align.CENTER
-                }
+            // Etiquetas X
+            drawText(
+                textMeasurer = textMeasurer,
+                text = data[index].monthLabel,
+                topLeft = Offset(point.x - 20.dp.toPx(), size.height + 12.dp.toPx()),
+                style = TextStyle(color = textColor, fontSize = 10.sp)
             )
+
+            // Tooltip
+            if (selectedIndex == index) {
+                val tooltipText = formattedAmounts[index]
+                val textLayoutResult = textMeasurer.measure(
+                    text = tooltipText,
+                    style = TextStyle(color = tooltipTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                )
+                val tooltipWidth = textLayoutResult.size.width + 16.dp.toPx()
+                val tooltipHeight = textLayoutResult.size.height + 12.dp.toPx()
+
+                val tooltipX = (point.x - tooltipWidth / 2).coerceIn(0f, width - tooltipWidth)
+                val tooltipY = (point.y - tooltipHeight - 16.dp.toPx()).coerceAtLeast(0f)
+
+                drawRoundRect(
+                    color = tooltipBgColor,
+                    topLeft = Offset(tooltipX, tooltipY),
+                    size = Size(tooltipWidth, tooltipHeight),
+                    cornerRadius = CornerRadius(8.dp.toPx())
+                )
+
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(tooltipX + 8.dp.toPx(), tooltipY + 6.dp.toPx())
+                )
+            }
         }
     }
 }
@@ -312,7 +334,10 @@ fun StatBar(stat: CategoryStat) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = if (stat.name == "Otros") stringResource(R.string.stats_others) else stat.name, fontWeight = FontWeight.Medium)
+            Text(
+                text = if (stat.name == "Otros") stringResource(R.string.stats_others) else stat.name,
+                fontWeight = FontWeight.Medium
+            )
             Text(text = formatMoneyCents(stat.totalCents), fontWeight = FontWeight.Bold)
         }
 
