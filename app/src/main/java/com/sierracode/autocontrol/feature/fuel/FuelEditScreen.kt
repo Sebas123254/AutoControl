@@ -40,6 +40,7 @@ import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
+import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
@@ -409,16 +410,14 @@ fun FuelEditScreen(
                 )
             }
 
-            OutlinedTextField(
+            // CAMBIO: CurrencyField para el total
+            CurrencyField(
                 value = vm.total,
                 onValueChange = { vm.updateTotal(it) },
-                label = { Text(stringResource(R.string.fuel_edit_total)) },
-                suffix = { Text(config.currencyCode) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                label = stringResource(R.string.fuel_edit_total),
+                currencyCode = config.currencyCode,
+                imeAction = ImeAction.Next,
+                onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
                 modifier = Modifier.fillMaxWidth()
             )
 

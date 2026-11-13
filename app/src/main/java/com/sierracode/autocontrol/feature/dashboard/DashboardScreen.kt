@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
-enum class SummaryPeriod { THIS_MONTH, ALL_TIME }
+enum class SummaryPeriod { THIS_MONTH, LAST_MONTH, THIS_YEAR, ALL_TIME }
 
 data class EvaluatedSchedule(
     val id: String,
@@ -90,14 +90,10 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
-    // DB1: gasto histórico, independiente del periodo seleccionado arriba.
-    // Se usa SOLO para "Costo total acumulado" (precio de compra + gastos).
     val allTimeSpent = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(0L) else expenseRepo.observeSum(id, 0L, Long.MAX_VALUE).map { it ?: 0L }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
-    // DB2: recordatorios que vencen en los próximos 7 días o ya vencidos.
-    // Se usa SOLO para el badge de la barra superior (junto con mantenimientos).
     val dueReminders = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else reminderRepo.observeByVehicle(id).map { list ->
             val horizon = System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000
@@ -189,6 +185,11 @@ class DashboardViewModel @Inject constructor(
         val today = LocalDate.now()
         return when (period) {
             SummaryPeriod.THIS_MONTH -> today.withDayOfMonth(1).toEpochDay() to today.toEpochDay()
+            SummaryPeriod.LAST_MONTH -> {
+                val lastMonth = today.minusMonths(1)
+                lastMonth.withDayOfMonth(1).toEpochDay() to lastMonth.withDayOfMonth(lastMonth.lengthOfMonth()).toEpochDay()
+            }
+            SummaryPeriod.THIS_YEAR -> today.withDayOfYear(1).toEpochDay() to today.toEpochDay()
             SummaryPeriod.ALL_TIME -> 0L to today.toEpochDay()
         }
     }
@@ -225,7 +226,6 @@ fun DashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // DB2: el badge también considera documentos/recordatorios próximos a vencer.
     val hasPendingAlerts = schedules.any { it.urgency == Urgency.OVERDUE || it.urgency == Urgency.SOON } ||
             dueReminders.isNotEmpty()
 
@@ -239,7 +239,6 @@ fun DashboardScreen(
                     val nombre = scheduleToDelete!!.name
                     vm.deleteSchedule(scheduleToDelete!!.id)
                     scheduleToDelete = null
-                    // DB7: feedback
                     scope.launch { snackbarHostState.showSnackbar("Mantenimiento '$nombre' eliminado") }
                 }) {
                     Text("Eliminar", color = MaterialTheme.colorScheme.error)
@@ -263,7 +262,6 @@ fun DashboardScreen(
                         ) {
                             Text(s.name)
                             TextButton(onClick = {
-                                // DB7 (bis): feedback desde la lista completa
                                 val nombre = s.name
                                 vm.deleteSchedule(s.id)
                                 showAllSchedules = false
@@ -458,11 +456,27 @@ fun DashboardScreen(
                 }
 
                 SectionHeader("Resumen financiero")
+
+                // FILTROS DEL DASHBOARD
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = selectedPeriod == SummaryPeriod.THIS_MONTH,
                         onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_MONTH) },
                         label = { Text("Este mes") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = selectedPeriod == SummaryPeriod.LAST_MONTH,
+                        onClick = { vm.setSummaryPeriod(SummaryPeriod.LAST_MONTH) },
+                        label = { Text("Mes pasado") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = selectedPeriod == SummaryPeriod.THIS_YEAR,
+                        onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_YEAR) },
+                        label = { Text("Este año") },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
@@ -475,11 +489,15 @@ fun DashboardScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     MetricCard(
-                        title = if (selectedPeriod == SummaryPeriod.THIS_MONTH) "Gasto del mes" else "Gasto histórico",
+                        title = when(selectedPeriod) {
+                            SummaryPeriod.THIS_MONTH -> "Gasto del mes"
+                            SummaryPeriod.LAST_MONTH -> "Gasto mes pasado"
+                            SummaryPeriod.THIS_YEAR -> "Gasto del año"
+                            SummaryPeriod.ALL_TIME -> "Gasto histórico"
+                        },
                         value = formatMoneyCents(totalSpent),
                         modifier = Modifier.weight(1f)
                     )
-                    // DB4: label aclara que es histórico.
                     if (costPerKm != null) {
                         MetricCard(
                             title = "Costo por km histórico",
@@ -497,7 +515,6 @@ fun DashboardScreen(
                 }
 
                 if (v.purchasePriceCents != null) {
-                    // DB1: SIEMPRE histórico, no el filtrado por periodo.
                     val totalCost = calculateTotalCost(v.purchasePriceCents, allTimeSpent)
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {

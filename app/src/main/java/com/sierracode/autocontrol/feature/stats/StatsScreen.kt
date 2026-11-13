@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -227,14 +229,25 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
     val textMeasurer = rememberTextMeasurer()
 
-    // SOLUCIÓN: Evaluar en contexto composable (línea a línea) y guardar la lista resultante.
     val formattedAmounts = data.map { formatMoneyCents(it.totalCents) }
+
+    // ACCESIBILIDAD: Construimos un texto descriptivo para TalkBack
+    val chartDescription = remember(data) {
+        buildString {
+            append("Gráfica de evolución mensual. ")
+            data.forEachIndexed { index, stat ->
+                append("${stat.monthLabel}: ${formattedAmounts[index]}. ")
+                if (index < data.size - 1) append("")
+            }
+        }
+    }
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(240.dp)
             .padding(top = 16.dp, end = 32.dp, start = 48.dp, bottom = 32.dp)
+            .semantics { contentDescription = chartDescription } // <-- Semántica para TalkBack
             .pointerInput(data) {
                 detectTapGestures { offset ->
                     val stepX = if (data.size > 1) size.width / (data.size - 1) else size.width

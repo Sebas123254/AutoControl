@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -19,8 +20,11 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -66,9 +70,9 @@ class DocumentEditViewModel @Inject constructor(
 
     fun updateName(newName: String) { name = newName; hasUnsavedChanges = true; error = null }
     fun updateType(newType: String) { type = newType; hasUnsavedChanges = true; error = null }
-    fun updateIssueDate(newDate: LocalDate?) { issueDate = newDate; hasUnsavedChanges = true }
-    fun updateExpiryDate(newDate: LocalDate?) { expiryDate = newDate; hasUnsavedChanges = true }
-    fun updateLeadDays(newDays: String) { leadDays = newDays; hasUnsavedChanges = true }
+    fun updateIssueDate(newDate: LocalDate?) { issueDate = newDate; hasUnsavedChanges = true; error = null }
+    fun updateExpiryDate(newDate: LocalDate?) { expiryDate = newDate; hasUnsavedChanges = true; error = null }
+    fun updateLeadDays(newDays: String) { leadDays = newDays; hasUnsavedChanges = true; error = null }
     fun updateNotes(newNotes: String) { notes = newNotes; hasUnsavedChanges = true }
     fun updateFileUri(newUri: Uri?) { selectedFileUri = newUri; hasUnsavedChanges = true }
 
@@ -98,6 +102,17 @@ class DocumentEditViewModel @Inject constructor(
             return
         }
 
+        val leadDaysInt = leadDays.toIntOrNull() ?: 30
+        if (leadDaysInt < 1 || leadDaysInt > 90) {
+            error = "Los días de aviso deben estar entre 1 y 90."
+            return
+        }
+
+        if (issueDate != null && expiryDate!!.isBefore(issueDate)) {
+            error = "La fecha de vencimiento no puede ser menor a la de expedición."
+            return
+        }
+
         viewModelScope.launch {
             isLoading = true
             try {
@@ -105,9 +120,7 @@ class DocumentEditViewModel @Inject constructor(
 
                 if (selectedFileUri != null) {
                     val mimeType = context.contentResolver.getType(selectedFileUri!!)
-
                     ImageUtils.deleteLocalFile(existingFileUri)
-
                     if (mimeType == "application/pdf") {
                         finalFileUri = ImageUtils.copyToInternalStorage(context, selectedFileUri!!, "pdf")?.toString()
                     } else {
@@ -122,7 +135,7 @@ class DocumentEditViewModel @Inject constructor(
                     name = name,
                     issueDateEpochDay = issueDate?.toEpochDay(),
                     expiryDateEpochDay = expiryDate!!.toEpochDay(),
-                    reminderLeadDays = leadDays.toIntOrNull() ?: 30,
+                    reminderLeadDays = leadDaysInt,
                     fileUri = finalFileUri,
                     notes = notes.takeIf { it.isNotBlank() }
                 )
@@ -146,21 +159,17 @@ fun DocumentEditScreen(
     vm: DocumentEditViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     var showExpiryPicker by remember { mutableStateOf(false) }
     var showIssuePicker by remember { mutableStateOf(false) }
     var expandedType by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
 
-    // OB1: pedir POST_NOTIFICATIONS en contexto, al guardar el primer documento
-    // con fecha de vencimiento. Si el usuario la deniega, el documento se guarda
-    // igual y el recordatorio interno se crea; solo no habrá notificación del sistema.
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { /* concedido o denegado: guardamos igual */ vm.save(context, onDone) }
+    ) { vm.save(context, onDone) }
 
-    BackHandler(enabled = vm.hasUnsavedChanges) {
-        showDiscardDialog = true
-    }
+    BackHandler(enabled = vm.hasUnsavedChanges) { showDiscardDialog = true }
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -168,33 +177,24 @@ fun DocumentEditScreen(
             title = { Text(stringResource(R.string.discard_changes_title)) },
             text = { Text(stringResource(R.string.discard_changes_msg)) },
             confirmButton = {
-                TextButton(onClick = {
-                    showDiscardDialog = false
-                    onDone()
-                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) {
-                    Text(stringResource(R.string.action_keep_editing))
+                TextButton(onClick = { showDiscardDialog = false; onDone() }) {
+                    Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error)
                 }
-            }
+            },
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) } }
         )
     }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) vm.updateFileUri(uri)
-    }
+    ) { uri: Uri? -> if (uri != null) vm.updateFileUri(uri) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Documento") },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
-                    }) {
+                    IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
                     }
                 }
@@ -209,6 +209,8 @@ fun DocumentEditScreen(
                 value = vm.name,
                 onValueChange = { vm.updateName(it) },
                 label = { Text("Nombre (Ej. Póliza GNP) *") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -224,104 +226,69 @@ fun DocumentEditScreen(
                 )
                 ExposedDropdownMenu(expanded = expandedType, onDismissRequest = { expandedType = false }) {
                     listOf("SEGURO", "CIRCULACION", "VERIFICACION", "FACTURA", "OTRO").forEach { t ->
-                        DropdownMenuItem(
-                            text = { Text(t) },
-                            onClick = {
-                                vm.updateType(t)
-                                expandedType = false
-                            }
-                        )
+                        DropdownMenuItem(text = { Text(t) }, onClick = { vm.updateType(t); expandedType = false })
                     }
                 }
             }
 
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = false,
-                    label = { Text("Fecha de Expedición (Opcional)") },
-                    placeholder = { Text("Toca para elegir fecha") },
-                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Box(modifier = Modifier.matchParentSize().clickable { showIssuePicker = true })
-            }
+            // CAMBIO: Fecha expedición accesible (readOnly en lugar de enabled = false)
+            OutlinedTextField(
+                value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Fecha de Expedición (Opcional)") },
+                placeholder = { Text("Toca para elegir fecha") },
+                trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                modifier = Modifier.fillMaxWidth().clickable { showIssuePicker = true }
+            )
 
             if (showIssuePicker) {
-                val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-                    ?: System.currentTimeMillis()
+                val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showIssuePicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let {
-                                vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate())
-                            }
+                            state.selectedDateMillis?.let { vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
                             showIssuePicker = false
                         }) { Text("Aceptar") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showIssuePicker = false }) { Text("Cancelar") }
-                    }
+                    dismissButton = { TextButton(onClick = { showIssuePicker = false }) { Text("Cancelar") } }
                 ) { DatePicker(state = state) }
             }
 
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = false,
-                    label = { Text("Fecha de Vencimiento *") },
-                    placeholder = { Text("Toca para elegir fecha") },
-                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Box(modifier = Modifier.matchParentSize().clickable { showExpiryPicker = true })
-            }
+            // CAMBIO: Fecha vencimiento accesible
+            OutlinedTextField(
+                value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Fecha de Vencimiento *") },
+                placeholder = { Text("Toca para elegir fecha") },
+                trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                modifier = Modifier.fillMaxWidth().clickable { showExpiryPicker = true }
+            )
 
             if (showExpiryPicker) {
-                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-                    ?: System.currentTimeMillis()
+                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showExpiryPicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let {
-                                vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate())
-                            }
+                            state.selectedDateMillis?.let { vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
                             showExpiryPicker = false
                         }) { Text("Aceptar") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showExpiryPicker = false }) { Text("Cancelar") }
-                    }
+                    dismissButton = { TextButton(onClick = { showExpiryPicker = false }) { Text("Cancelar") } }
                 ) { DatePicker(state = state) }
             }
 
             OutlinedTextField(
                 value = vm.leadDays,
                 onValueChange = { vm.updateLeadDays(it) },
-                label = { Text("Días de anticipación para avisar") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = { Text("Días de anticipación para avisar (1-90)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -331,25 +298,19 @@ fun DocumentEditScreen(
             ) {
                 Icon(Icons.Default.AttachFile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    if (vm.selectedFileUri != null || vm.existingFileUri != null)
-                        "Cambiar archivo adjunto"
-                    else "Adjuntar archivo (Opcional)"
-                )
+                Text(if (vm.selectedFileUri != null || vm.existingFileUri != null) "Cambiar archivo adjunto" else "Adjuntar archivo (Opcional)")
             }
 
             if (vm.selectedFileUri != null || vm.existingFileUri != null) {
-                Text(
-                    text = "Archivo seleccionado",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Text("Archivo seleccionado", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
 
             OutlinedTextField(
                 value = vm.notes,
                 onValueChange = { vm.updateNotes(it) },
                 label = { Text("Notas (Opcional)") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -358,22 +319,15 @@ fun DocumentEditScreen(
             Button(
                 onClick = {
                     val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                            ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.POST_NOTIFICATIONS
-                            ) != PackageManager.PERMISSION_GRANTED &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
                             vm.expiryDate != null
-
-                    if (needsPermission) {
-                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        vm.save(context, onDone)
-                    }
+                    if (needsPermission) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else vm.save(context, onDone)
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp))
-                else Text("Guardar")
+                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp)) else Text("Guardar")
             }
         }
     }

@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -26,6 +25,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
 import com.sierracode.autocontrol.data.repository.CategoryRepository
@@ -65,9 +65,9 @@ class GoalEditViewModel @Inject constructor(
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
-    fun updateTitle(newTitle: String) { title = newTitle; hasUnsavedChanges = true }
-    fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true }
-    fun updateMaxAmount(newMax: String) { maxAmount = newMax; hasUnsavedChanges = true }
+    fun updateTitle(newTitle: String) { title = newTitle; hasUnsavedChanges = true; error = null }
+    fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true; error = null }
+    fun updateMaxAmount(newMax: String) { maxAmount = newMax; hasUnsavedChanges = true; error = null }
     fun updatePriority(newPriority: String) { priority = newPriority; hasUnsavedChanges = true }
     fun updateTargetDate(newDate: LocalDate?) { targetDate = newDate; hasUnsavedChanges = true }
     fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
@@ -83,9 +83,7 @@ class GoalEditViewModel @Inject constructor(
                     priority = goal.priority
                     targetDate = goal.targetDateEpochDay?.let { LocalDate.ofEpochDay(it) }
                     notes = goal.notes ?: ""
-
-                    val allCats = categories.value
-                    selectedCategory = allCats.find { it.id == goal.categoryId }
+                    selectedCategory = categories.value.find { it.id == goal.categoryId }
                 }
             }
         }
@@ -97,6 +95,14 @@ class GoalEditViewModel @Inject constructor(
 
         if (title.isBlank() || est <= 0) {
             error = context.getString(R.string.goal_err_valid)
+            return
+        }
+        if (est < 0 || (max != null && max < 0)) {
+            error = "Los montos no pueden ser negativos."
+            return
+        }
+        if (max != null && max < est) {
+            error = "El monto máximo no puede ser menor al estimado."
             return
         }
 
@@ -142,9 +148,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
-    BackHandler(enabled = vm.hasUnsavedChanges) {
-        showDiscardDialog = true
-    }
+    BackHandler(enabled = vm.hasUnsavedChanges) { showDiscardDialog = true }
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -152,14 +156,11 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
             title = { Text(stringResource(R.string.discard_changes_title)) },
             text = { Text(stringResource(R.string.discard_changes_msg)) },
             confirmButton = {
-                TextButton(onClick = {
-                    showDiscardDialog = false
-                    onDone()
-                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { showDiscardDialog = false; onDone() }) {
+                    Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error)
+                }
             },
-            dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
-            }
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) } }
         )
     }
 
@@ -168,9 +169,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
             TopAppBar(
                 title = { Text(stringResource(R.string.goals_edit_title)) },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
-                    }) {
+                    IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
@@ -190,27 +189,20 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                 modifier = Modifier.fillMaxWidth()
             )
 
-            OutlinedTextField(
+            // CAMBIO: CurrencyField
+            CurrencyField(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
-                label = { Text(stringResource(R.string.goals_field_amount)) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                label = stringResource(R.string.goals_field_amount),
+                currencyCode = "MXN", // Podría venir de config
                 modifier = Modifier.fillMaxWidth()
             )
 
-            OutlinedTextField(
+            CurrencyField(
                 value = vm.maxAmount,
                 onValueChange = { vm.updateMaxAmount(it) },
-                label = { Text(stringResource(R.string.goals_field_max)) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                label = stringResource(R.string.goals_field_max),
+                currencyCode = "MXN",
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -233,16 +225,10 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
             Box(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = vm.targetDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                    onValueChange = {}, readOnly = true, enabled = false, label = { Text(stringResource(R.string.goals_field_date)) },
+                    onValueChange = {}, readOnly = true, label = { Text(stringResource(R.string.goals_field_date)) },
                     trailingIcon = { Icon(Icons.Default.DateRange, null) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }
                 )
-                Box(Modifier.matchParentSize().clickable { showDatePicker = true })
             }
 
             if (showDatePicker) {

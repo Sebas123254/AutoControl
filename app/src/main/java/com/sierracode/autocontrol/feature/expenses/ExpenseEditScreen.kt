@@ -41,6 +41,7 @@ import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
+import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
@@ -435,22 +436,16 @@ fun ExpenseEditScreen(
                 )
             }
 
-            OutlinedTextField(
+            // CAMBIO: CurrencyField para el monto
+            CurrencyField(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
-                label = { Text(stringResource(R.string.expense_edit_amount)) },
-                suffix = { Text(config.currencyCode) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                label = stringResource(R.string.expense_edit_amount),
+                currencyCode = config.currencyCode,
                 isError = vm.isAmountError,
-                supportingText = {
-                    if (vm.isAmountError) {
-                        Text("El monto debe ser mayor a 0")
-                    }
-                },
+                errorMessage = if (vm.isAmountError) "El monto debe ser mayor a 0" else null,
+                imeAction = ImeAction.Next,
+                onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
                 modifier = Modifier.fillMaxWidth()
             )
 

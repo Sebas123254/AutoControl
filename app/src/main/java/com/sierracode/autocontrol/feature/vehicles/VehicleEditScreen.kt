@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -11,9 +12,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -21,6 +25,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.data.local.entity.VehicleEntity
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.VehicleRepository
@@ -28,6 +33,7 @@ import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.math.roundToLong
 
@@ -55,11 +61,11 @@ class VehicleEditViewModel @Inject constructor(
     var hasUnsavedChanges by mutableStateOf(false)
         private set
 
-    fun updateBrand(v: String) { brand = v; hasUnsavedChanges = true }
-    fun updateModel(v: String) { model = v; hasUnsavedChanges = true }
-    fun updateYear(v: String) { year = v; hasUnsavedChanges = true }
+    fun updateBrand(v: String) { brand = v; hasUnsavedChanges = true; error = null }
+    fun updateModel(v: String) { model = v; hasUnsavedChanges = true; error = null }
+    fun updateYear(v: String) { year = v; hasUnsavedChanges = true; error = null }
     fun updatePlates(v: String) { plates = v; hasUnsavedChanges = true }
-    fun updateOdometer(v: String) { odometer = v; hasUnsavedChanges = true }
+    fun updateOdometer(v: String) { odometer = v; hasUnsavedChanges = true; error = null }
     fun updatePurchasePrice(v: String) { purchasePrice = v; hasUnsavedChanges = true; error = null }
     fun updateCurrency(v: String) { currencyCode = v; hasUnsavedChanges = true }
     fun updateUnits(v: String) { unitSystem = v; hasUnsavedChanges = true }
@@ -95,6 +101,13 @@ class VehicleEditViewModel @Inject constructor(
             return
         }
 
+        val yearInt = year.toIntOrNull()
+        val currentYear = LocalDate.now().year
+        if (yearInt == null || yearInt < 1900 || yearInt > currentYear + 1) {
+            error = "El año debe estar entre 1900 y ${currentYear + 1}."
+            return
+        }
+
         val priceDouble = purchasePrice.toDoubleOrNull()
         if (purchasePrice.isNotBlank() && (priceDouble == null || priceDouble < 0 || priceDouble > 10_000_000.0)) {
             error = "El precio de compra debe ser válido y menor a 10 millones."
@@ -112,7 +125,7 @@ class VehicleEditViewModel @Inject constructor(
                     id = vehicleId?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString(),
                     brand = brand,
                     model = model,
-                    year = year.toIntOrNull() ?: 2024,
+                    year = yearInt,
                     plates = plates.takeIf { it.isNotBlank() },
                     odometer = odoKm,
                     currencyCode = currencyCode,
@@ -140,6 +153,7 @@ fun VehicleEditScreen(
     vm: VehicleEditViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     var expandedCurrency by remember { mutableStateOf(false) }
     var expandedUnits by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -179,15 +193,42 @@ fun VehicleEditScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            OutlinedTextField(value = vm.brand, onValueChange = { vm.updateBrand(it) }, label = { Text("Marca (Ej. Volkswagen) *") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = vm.model, onValueChange = { vm.updateModel(it) }, label = { Text("Modelo (Ej. Vocho) *") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = vm.year, onValueChange = { vm.updateYear(it) }, label = { Text("Año (Ej. 1998) *") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = vm.plates, onValueChange = { vm.updatePlates(it) }, label = { Text("Placas (Opcional)") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = vm.brand,
+                onValueChange = { vm.updateBrand(it) },
+                label = { Text("Marca (Ej. Volkswagen) *") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = vm.model,
+                onValueChange = { vm.updateModel(it) },
+                label = { Text("Modelo (Ej. Vocho) *") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = vm.year,
+                onValueChange = { vm.updateYear(it) },
+                label = { Text("Año (Ej. 1998) *") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = vm.plates,
+                onValueChange = { vm.updatePlates(it) },
+                label = { Text("Placas (Opcional)") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                modifier = Modifier.fillMaxWidth()
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text("¿Cómo registrarás este vehículo? *", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-            // V1: bloquear el cambio de sistema de unidades al editar (evita corrupción del odómetro).
             ExposedDropdownMenuBox(
                 expanded = expandedUnits,
                 onExpandedChange = { if (!isEditing) expandedUnits = !expandedUnits }
@@ -230,17 +271,20 @@ fun VehicleEditScreen(
                 value = vm.odometer,
                 onValueChange = { vm.updateOdometer(it) },
                 label = { Text("Odómetro actual *") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 suffix = { Text(if (vm.unitSystem == "METRIC") "km" else "mi") },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            OutlinedTextField(
+            // CAMBIO: Usamos CurrencyField
+            CurrencyField(
                 value = vm.purchasePrice,
                 onValueChange = { vm.updatePurchasePrice(it) },
-                label = { Text("Precio original o de compra (Opcional)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                suffix = { Text(vm.currencyCode) },
+                label = "Precio original o de compra (Opcional)",
+                currencyCode = vm.currencyCode,
+                imeAction = ImeAction.Done,
+                onImeAction = { focusManager.clearFocus() },
                 modifier = Modifier.fillMaxWidth()
             )
 

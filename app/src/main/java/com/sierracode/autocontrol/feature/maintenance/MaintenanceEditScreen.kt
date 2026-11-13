@@ -40,6 +40,7 @@ import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
+import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.*
 import com.sierracode.autocontrol.data.preferences.SettingsStore
@@ -166,6 +167,8 @@ class MaintenanceEditViewModel @Inject constructor(
                 }
 
                 var updatedScheduleId: String? = null
+                var finalSchedule: MaintenanceScheduleEntity? = null
+
                 if (odoKm != null) {
                     val existingSchedule = scheduleRepo.getActiveByName(vehicleId, selectedCategory!!.name)
 
@@ -178,6 +181,7 @@ class MaintenanceEditViewModel @Inject constructor(
                         )
                         scheduleRepo.upsert(updatedSchedule)
                         updatedScheduleId = updatedSchedule.id
+                        finalSchedule = updatedSchedule
                     } else if (nextOdoKm != null) {
                         val newSchedule = MaintenanceScheduleEntity(
                             vehicleId = vehicleId,
@@ -188,6 +192,7 @@ class MaintenanceEditViewModel @Inject constructor(
                         )
                         scheduleRepo.upsert(newSchedule)
                         updatedScheduleId = newSchedule.id
+                        finalSchedule = newSchedule
                     }
                 }
 
@@ -201,8 +206,13 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
-                if (updatedScheduleId != null) {
-                    val triggerMillis = LocalDate.ofEpochDay(dateEpochDay).plusMonths(1)
+                if (finalSchedule != null) {
+                    val remindDays = finalSchedule.remindBeforeDays.toLong()
+                    val intervalMonths = finalSchedule.intervalMonths?.toLong() ?: 6L
+                    val nextServiceDate = LocalDate.ofEpochDay(dateEpochDay).plusMonths(intervalMonths)
+                    val triggerDate = nextServiceDate.minusDays(remindDays)
+
+                    val triggerMillis = triggerDate
                         .atStartOfDay(ZoneId.systemDefault())
                         .toInstant()
                         .toEpochMilli()
@@ -210,7 +220,7 @@ class MaintenanceEditViewModel @Inject constructor(
                     val reminder = ReminderEntity(
                         vehicleId = vehicleId,
                         sourceType = "MAINTENANCE",
-                        sourceId = updatedScheduleId,
+                        sourceId = finalSchedule.id,
                         title = "Mantenimiento: ${selectedCategory!!.name}",
                         body = "Tu vehículo podría necesitar este servicio pronto.",
                         triggerAtEpochMillis = triggerMillis
@@ -373,16 +383,14 @@ fun MaintenanceEditScreen(
                 Box(modifier = Modifier.matchParentSize().clickable { showDatePicker = true })
             }
 
-            OutlinedTextField(
+            // CAMBIO: CurrencyField para el costo
+            CurrencyField(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
-                label = { Text(stringResource(R.string.maint_edit_cost)) },
-                suffix = { Text(config.currencyCode) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                label = stringResource(R.string.maint_edit_cost),
+                currencyCode = config.currencyCode,
+                imeAction = ImeAction.Next,
+                onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
                 modifier = Modifier.fillMaxWidth()
             )
 

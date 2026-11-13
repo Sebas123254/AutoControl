@@ -102,12 +102,12 @@ fun VehiclesScreen(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedVehicles by remember { mutableStateOf(setOf<String>()) }
 
-    // BK4/BK5: snackbar para feedback de export/import
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // Cambio a "application/zip" y nombre de archivo .zip
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         vm.exportData(uri, context) { success ->
@@ -142,7 +142,8 @@ fun VehiclesScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showImportDialog = false
-                    openDocumentLauncher.launch(arrayOf("application/json"))
+                    // Permitimos zip y json para compatibilidad
+                    openDocumentLauncher.launch(arrayOf("application/zip", "application/json"))
                 }) { Text(stringResource(R.string.action_yes_restore), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
@@ -220,7 +221,7 @@ fun VehiclesScreen(
                         IconButton(onClick = { showImportDialog = true }) {
                             Icon(Icons.Default.FolderOpen, stringResource(R.string.vehicles_cd_import))
                         }
-                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.json") }) {
+                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.zip") }) {
                             Icon(Icons.Default.Save, stringResource(R.string.vehicles_cd_export))
                         }
                         IconButton(onClick = onOpenSettings) {

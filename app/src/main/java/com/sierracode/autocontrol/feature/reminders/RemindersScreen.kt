@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,6 +59,19 @@ class RemindersViewModel @Inject constructor(
     fun deleteReminder(id: String) {
         viewModelScope.launch {
             reminderRepo.deleteById(id)
+        }
+    }
+
+    fun snoozeReminder(reminder: ReminderEntity, days: Int) {
+        viewModelScope.launch {
+            val newTrigger = System.currentTimeMillis() + (days * 24L * 60L * 60L * 1000L)
+            // Posponemos actualizando la fecha de disparo y reseteando el aviso
+            reminderRepo.upsert(
+                reminder.copy(
+                    triggerAtEpochMillis = newTrigger,
+                    lastNotifiedAt = null
+                )
+            )
         }
     }
 }
@@ -123,7 +137,8 @@ fun RemindersScreen(
                     ReminderCard(
                         reminder = reminder,
                         onToggle = { enabled -> vm.toggleReminder(reminder, enabled) },
-                        onDelete = { reminderToDelete = reminder }
+                        onDelete = { reminderToDelete = reminder },
+                        onSnooze = { days -> vm.snoozeReminder(reminder, days) }
                     )
                 }
             }
@@ -135,13 +150,16 @@ fun RemindersScreen(
 fun ReminderCard(
     reminder: ReminderEntity,
     onToggle: (Boolean) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onSnooze: (Int) -> Unit
 ) {
     val dateEpochDay = Instant.ofEpochMilli(reminder.triggerAtEpochMillis)
         .atZone(ZoneId.systemDefault())
         .toLocalDate()
         .toEpochDay()
     val dateText = formatDate(dateEpochDay)
+
+    var showSnoozeMenu by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -167,11 +185,43 @@ fun ReminderCard(
                 )
             }
 
+            // Botón de Posponer
+            Box {
+                IconButton(onClick = { showSnoozeMenu = true }) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = "Posponer",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                DropdownMenu(
+                    expanded = showSnoozeMenu,
+                    onDismissRequest = { showSnoozeMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Posponer 1 día") },
+                        onClick = {
+                            onSnooze(1)
+                            showSnoozeMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Posponer 1 semana") },
+                        onClick = {
+                            onSnooze(7)
+                            showSnoozeMenu = false
+                        }
+                    )
+                }
+            }
+
+            // Switch de activar/desactivar
             Switch(
                 checked = reminder.enabled,
                 onCheckedChange = onToggle
             )
 
+            // Botón de eliminar
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
