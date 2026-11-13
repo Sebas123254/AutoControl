@@ -20,7 +20,7 @@ data class BackupData(
     val goals: List<GoalDto> = emptyList()
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 5 // <-- SUBIDO A 5
+        const val CURRENT_SCHEMA_VERSION = 6 // <-- SUBIDO A 6
     }
 }
 
@@ -30,7 +30,10 @@ data class VehicleDto(
     val trim: String?, val color: String?, val plates: String?, val vin: String?,
     val fuelType: String, val tankLiters: Double?, val odometer: Long,
     val photoUri: String?, val purchaseDateEpochDay: Long?, val purchasePriceCents: Long?,
-    val notes: String?, val createdAt: Long, val updatedAt: Long
+    val notes: String?,
+    val currencyCode: String = "MXN", // <-- NUEVO
+    val unitSystem: String = "METRIC", // <-- NUEVO
+    val createdAt: Long, val updatedAt: Long
 )
 
 @Serializable
@@ -38,7 +41,7 @@ data class ExpenseDto(
     val id: String, val vehicleId: String, val type: String, val categoryId: String,
     val amountCents: Long, val dateEpochDay: Long, val odometer: Long?,
     val description: String?,
-    val customCategoryName: String? = null, // <-- NUEVO
+    val customCategoryName: String? = null,
     val establishment: String?, val paymentMethod: String?,
     val notes: String?, val createdAt: Long, val updatedAt: Long
 )

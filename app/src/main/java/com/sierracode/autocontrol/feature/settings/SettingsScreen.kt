@@ -2,6 +2,7 @@ package com.sierracode.autocontrol.feature.settings
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -15,34 +16,79 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
-import com.sierracode.autocontrol.data.preferences.EfficiencyFormat
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.preferences.UnitSystem
+import com.sierracode.autocontrol.data.repository.CurrencyRepository
+import com.sierracode.autocontrol.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val settings: SettingsStore
+    private val settings: SettingsStore,
+    private val vehicleRepo: VehicleRepository,
+    private val currencyRepo: CurrencyRepository
 ) : ViewModel() {
     val darkMode = settings.darkMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val isPro = settings.isPro.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val currencyCode = settings.currencyCode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "MXN")
-    val unitSystem = settings.unitSystem.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitSystem.METRIC)
+    private val activeVehicle = settings.activeVehicleId
+        .combine(vehicleRepo.observeAll()) { id, vehicles -> vehicles.find { it.id == id } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val currentCurrency = activeVehicle.combine(settings.currencyCode) { vehicle, globalCurr ->
+        vehicle?.currencyCode ?: globalCurr
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "MXN")
+
+    val currentUnitSystem = activeVehicle.combine(settings.unitSystem) { vehicle, globalUnit ->
+        if (vehicle != null) {
+            if (vehicle.unitSystem == "METRIC") UnitSystem.METRIC else UnitSystem.US
+        } else {
+            globalUnit
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitSystem.METRIC)
 
     fun setTheme(mode: Boolean?) = viewModelScope.launch { settings.setDark(mode) }
-    fun setCurrency(code: String) = viewModelScope.launch { settings.setCurrency(code) }
-    fun setUnitSystem(system: UnitSystem) = viewModelScope.launch { settings.setUnitSystem(system) }
-    fun setPro(isPro: Boolean) = viewModelScope.launch { settings.setPro(isPro) } // <-- NUEVO
+
+    fun setUnitSystem(system: UnitSystem) = viewModelScope.launch {
+        settings.setUnitSystem(system)
+        val activeId = settings.activeVehicleId.first()
+        if (activeId != null) {
+            vehicleRepo.get(activeId)?.let { v ->
+                val newUnit = if (system == UnitSystem.METRIC) "METRIC" else "US"
+                vehicleRepo.upsert(v.copy(unitSystem = newUnit))
+            }
+        }
+    }
+
+    fun convertCurrency(newCurrency: String, inputRate: Double, onDone: () -> Unit) = viewModelScope.launch {
+        settings.setCurrency(newCurrency)
+        val activeId = settings.activeVehicleId.first()
+        if (activeId != null) {
+            val current = currentCurrency.value
+            // Calculamos el multiplicador correcto según la dirección
+            val multiplier = if (newCurrency == "MXN" && current != "MXN") {
+                inputRate // Ej: USD a MXN. Multiplicamos por 17.50
+            } else if (current == "MXN" && newCurrency != "MXN") {
+                1.0 / inputRate // Ej: MXN a USD. Multiplicamos por (1 / 17.50)
+            } else {
+                inputRate // Ej: EUR a USD. Multiplicamos por la tasa directa
+            }
+            currencyRepo.convertAll(activeId, newCurrency, multiplier)
+        }
+        onDone()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,10 +99,57 @@ fun SettingsScreen(
 ) {
     val darkMode by vm.darkMode.collectAsState()
     val isPro by vm.isPro.collectAsState()
-    val currency by vm.currencyCode.collectAsState()
-    val units by vm.unitSystem.collectAsState()
+    val currency by vm.currentCurrency.collectAsState()
+    val units by vm.currentUnitSystem.collectAsState()
 
     var showCurrencyMenu by remember { mutableStateOf(false) }
+
+    // Estados para el diálogo
+    var showConversionDialog by remember { mutableStateOf(false) }
+    var targetCurrency by remember { mutableStateOf("") }
+    var rateInput by remember { mutableStateOf("") }
+    var ratePrompt by remember { mutableStateOf("") }
+
+    if (showConversionDialog) {
+        AlertDialog(
+            onDismissRequest = { showConversionDialog = false },
+            title = { Text("Cambiar divisa a $targetCurrency") },
+            text = {
+                Column {
+                    Text(ratePrompt)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = rateInput,
+                        onValueChange = { rateInput = it },
+                        label = { Text("Tasa de cambio") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Todos los gastos históricos de este vehículo se convertirán a la nueva moneda.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val rate = rateInput.toDoubleOrNull()
+                        if (rate != null && rate > 0) {
+                            vm.convertCurrency(targetCurrency, rate) {
+                                showConversionDialog = false
+                            }
+                        }
+                    }
+                ) { Text("Aceptar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConversionDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -90,6 +183,14 @@ fun SettingsScreen(
 
             // --- REGIÓN Y UNIDADES ---
             Text("Región y Unidades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+            Text(
+                text = "Valores predeterminados para autos nuevos. Si hay un auto activo, se aplicará a él.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp, bottom = 4.dp)
+            )
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     ExposedDropdownMenuBox(expanded = showCurrencyMenu, onExpandedChange = { showCurrencyMenu = !showCurrencyMenu }) {
@@ -105,7 +206,25 @@ fun SettingsScreen(
                             listOf("MXN", "USD", "EUR", "CAD", "GBP").forEach { code ->
                                 DropdownMenuItem(
                                     text = { Text(code) },
-                                    onClick = { vm.setCurrency(code); showCurrencyMenu = false }
+                                    onClick = {
+                                        showCurrencyMenu = false
+                                        if (code != currency) {
+                                            targetCurrency = code
+                                            // Si la nueva moneda o la actual es MXN, pedimos la tasa del USD (o de la moneda extranjera) a MXN.
+                                            if (code == "MXN") {
+                                                rateInput = if (currency == "USD") "17.50" else "18.50"
+                                                ratePrompt = "1 $currency = ? MXN"
+                                            } else if (currency == "MXN") {
+                                                rateInput = if (code == "USD") "17.50" else "18.50"
+                                                ratePrompt = "1 $code = ? MXN"
+                                            } else {
+                                                // Si ninguna es MXN, pedimos la tasa directa entre ellas
+                                                rateInput = "1.0"
+                                                ratePrompt = "1 $code = ? $currency"
+                                            }
+                                            showConversionDialog = true
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -142,17 +261,6 @@ fun SettingsScreen(
                             Text(stringResource(if (isPro) R.string.settings_pro_title else R.string.settings_free_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(stringResource(if (isPro) R.string.settings_pro_desc else R.string.settings_free_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    // NUEVO BOTÓN DE SIMULACIÓN
-                    Button(
-                        onClick = { vm.setPro(!isPro) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isPro) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text(if (isPro) "Volver a Free (Simulación)" else "Simular Compra PRO")
                     }
                 }
             }

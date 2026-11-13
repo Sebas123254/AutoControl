@@ -18,7 +18,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.data.preferences.SettingsStore
-import com.sierracode.autocontrol.feature.documents.DocumentDetailScreen // <-- NUEVO
+import com.sierracode.autocontrol.feature.documents.DocumentDetailScreen
 import com.sierracode.autocontrol.feature.documents.DocumentEditScreen
 import com.sierracode.autocontrol.feature.expenses.ExpenseEditScreen
 import com.sierracode.autocontrol.feature.fuel.FuelEditScreen
@@ -76,7 +76,6 @@ sealed class Route(val path: String) {
         fun build(vehicleId: String, docId: String? = null) = "document_edit/$vehicleId?documentId=${docId ?: ""}"
     }
 
-    // NUEVA RUTA: DocumentDetail
     data object DocumentDetail : Route("document_detail/{vehicleId}/{documentId}") {
         fun build(vehicleId: String, docId: String) = "document_detail/$vehicleId/$docId"
     }
@@ -160,6 +159,12 @@ fun AppNavHost(
 
             composable(Route.Main.path) { back ->
                 val id = back.arguments!!.getString("vehicleId")!!
+
+                // Aseguramos que el vehículo al que entramos sea el activo global
+                LaunchedEffect(id) {
+                    settings.setActiveVehicle(id)
+                }
+
                 MainScreen(
                     vehicleId = id,
                     onBackToVehicles = { nav.popBackStack() },
@@ -168,7 +173,7 @@ fun AppNavHost(
                     onRegisterFuel = { nav.navigate(Route.FuelEdit.build(id)) },
                     onRegisterMaintenance = { nav.navigate(Route.MaintenanceEdit.build(id)) },
                     onAddDocument = { nav.navigate(Route.DocumentEdit.build(id)) },
-                    onDocumentClick = { docId -> nav.navigate(Route.DocumentDetail.build(id, docId)) }, // <-- NUEVO
+                    onDocumentClick = { docId -> nav.navigate(Route.DocumentDetail.build(id, docId)) },
                     onEditDocument = { docId -> nav.navigate(Route.DocumentEdit.build(id, docId)) },
                     onOpenReminders = { nav.navigate(Route.Reminders.build(id)) },
                     onOpenSettings = { nav.navigate(Route.Settings.path) },
@@ -211,7 +216,6 @@ fun AppNavHost(
                 DocumentEditScreen(onDone = { nav.popBackStack() })
             }
 
-            // NUEVO COMPOSABLE
             composable(Route.DocumentDetail.path) { back ->
                 DocumentDetailScreen(
                     onBack = { nav.popBackStack() },

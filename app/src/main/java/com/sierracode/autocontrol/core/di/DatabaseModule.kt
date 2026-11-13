@@ -6,7 +6,8 @@ import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.MIGRATION_1_2
 import com.sierracode.autocontrol.data.local.MIGRATION_2_3
 import com.sierracode.autocontrol.data.local.MIGRATION_3_4
-import com.sierracode.autocontrol.data.local.MIGRATION_4_5 // <-- NUEVO
+import com.sierracode.autocontrol.data.local.MIGRATION_4_5
+import com.sierracode.autocontrol.data.local.MIGRATION_5_6 // <-- IMPORT NECESARIO
 import com.sierracode.autocontrol.data.local.seed.CategorySeed
 import dagger.Module
 import dagger.Provides
@@ -28,7 +29,7 @@ object DatabaseModule {
         @AppScope scope: CoroutineScope
     ): AutoControlDatabase {
         val db = Room.databaseBuilder(ctx, AutoControlDatabase::class.java, "autocontrol.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5) // <-- AGREGADO AQUÍ
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
 
         scope.launch(Dispatchers.IO) {

@@ -20,6 +20,8 @@ data class VehicleEntity(
     val purchaseDateEpochDay: Long? = null,
     val purchasePriceCents: Long? = null,
     val notes: String? = null,
+    val currencyCode: String = "MXN", // <-- NUEVO
+    val unitSystem: String = "METRIC", // <-- NUEVO
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -30,7 +32,7 @@ data class VehicleEntity(
 )
 data class CategoryEntity(
     @PrimaryKey val id: String,
-    val group: String,        // FUEL, MAINT, REPAIR, OTHER, MOD
+    val group: String,
     val name: String,
     val iconKey: String,
     val isSystem: Boolean = true,
@@ -47,13 +49,13 @@ data class CategoryEntity(
 data class ExpenseEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val vehicleId: String,
-    val type: String,             // FUEL, MAINTENANCE, REPAIR, OTHER, MOD, DOCUMENT
+    val type: String,
     val categoryId: String,
     val amountCents: Long,
     val dateEpochDay: Long,
     val odometer: Long? = null,
     val description: String? = null,
-    val customCategoryName: String? = null, // <-- NUEVO CAMPO
+    val customCategoryName: String? = null,
     val establishment: String? = null,
     val paymentMethod: String? = null,
     val notes: String? = null,
@@ -68,7 +70,7 @@ data class ExpenseEntity(
 )
 data class FuelDetailEntity(
     @PrimaryKey val expenseId: String,
-    val litersMilli: Long,        // litros × 1000
+    val litersMilli: Long,
     val pricePerLiterCents: Long,
     val fuelType: String,
     val station: String? = null,

@@ -44,7 +44,7 @@
     <string name="dashboard_status_ok">🟢 AL DÍA</string>
     <string name="dashboard_status_unknown">⚪ SIN DATOS</string>
     <string name="dashboard_remaining_km">Faltan %1$s</string>
-    <string name="dashboard_mileage">Kilometraje</string>
+    <string name="dashboard_mileage">Odómetro</string>
     <string name="dashboard_total_spent">Gastado total</string>
     <string name="dashboard_no_expenses">Aún sin gastos</string>
     <string name="dashboard_real_cost">Costo Real del Auto</string>

@@ -12,7 +12,6 @@ import java.util.Currency
 import java.util.Locale
 import kotlin.math.roundToLong
 
-// Locale para fechas fijo
 private val mx = Locale("es", "MX")
 private val dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy", mx)
 
@@ -33,7 +32,11 @@ fun formatMoneyCents(cents: Long?): String {
         this.currency = currency
         maximumFractionDigits = 2
     }
-    return money.format(cents / 100.0)
+
+    // Agregamos el código de la divisa para evitar la ambigüedad con el símbolo $
+    val suffix = if (config.currencyCode == "MXN" || config.currencyCode == "USD") " ${config.currencyCode}" else ""
+
+    return "${money.format(cents / 100.0)}$suffix"
 }
 
 @Composable
@@ -83,7 +86,8 @@ fun formatCostPerDistance(costPerKmCents: Double?): String {
         UnitConverter.costPerKmToCostPerMile(costPerKmCents) / 100.0
     }
     val suffix = if (config.unitSystem == UnitSystem.METRIC) "/km" else "/mi"
-    // Usamos el formateador de dinero sin centavos para el costo por unidad
+
+    // Ahora formatMoneyCents ya incluye el código (ej. $1.50 USD), y le agregamos el /km o /mi
     return formatMoneyCents((costPerUnit * 100).roundToLong()) + suffix
 }
 

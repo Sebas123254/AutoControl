@@ -16,19 +16,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
-import com.sierracode.autocontrol.core.ui.AppConfig
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.theme.AutoControlTheme
-import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.navigation.AppNavHost
 import com.sierracode.autocontrol.navigation.NavIntent
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    @Inject lateinit var settings: SettingsStore
 
     private var navIntent by mutableStateOf<NavIntent?>(null)
 
@@ -45,13 +42,9 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            val dark by settings.darkMode.collectAsState(initial = null)
-            val currency by settings.currencyCode.collectAsState(initial = "MXN")
-            val unitSys by settings.unitSystem.collectAsState(initial = com.sierracode.autocontrol.data.preferences.UnitSystem.METRIC)
-            val effFormat by settings.efficiencyFormat.collectAsState(initial = com.sierracode.autocontrol.data.preferences.EfficiencyFormat.KM_PER_L)
-            val isPro by settings.isPro.collectAsState(initial = false) // <-- NUEVO
-
-            val appConfig = AppConfig(currency, unitSys, effFormat, isPro) // <-- NUEVO
+            val vm: MainActivityViewModel = hiltViewModel()
+            val dark by vm.darkMode.collectAsState(initial = null)
+            val appConfig by vm.appConfig.collectAsState()
 
             AutoControlTheme(darkTheme = dark ?: isSystemInDarkTheme()) {
                 CompositionLocalProvider(LocalAppConfig provides appConfig) {

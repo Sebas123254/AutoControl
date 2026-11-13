@@ -14,7 +14,7 @@ import com.sierracode.autocontrol.data.local.entity.*
         MaintenanceScheduleEntity::class, DocumentEntity::class,
         AttachmentEntity::class, ReminderEntity::class, GoalEntity::class
     ],
-    version = 5, // <-- SUBIMOS A 5
+    version = 6,
     exportSchema = true
 )
 abstract class AutoControlDatabase : RoomDatabase() {
@@ -69,19 +69,18 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-// NUEVA MIGRACIÓN 4 -> 5
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(database: SupportSQLiteDatabase) {
-        // 1. Mover gastos de 'rep_other' a 'other_misc'
         database.execSQL("UPDATE expenses SET categoryId = 'other_misc' WHERE categoryId = 'rep_other'")
-
-        // 2. Borrar la categoría duplicada
         database.execSQL("DELETE FROM categories WHERE id = 'rep_other'")
-
-        // 3. Renombrar 'other_misc' a 'Otro'
         database.execSQL("UPDATE categories SET name = 'Otro' WHERE id = 'other_misc'")
-
-        // 4. Añadir la nueva columna
         database.execSQL("ALTER TABLE expenses ADD COLUMN customCategoryName TEXT")
+    }
+}
+
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE vehicles ADD COLUMN currencyCode TEXT NOT NULL DEFAULT 'MXN'")
+        database.execSQL("ALTER TABLE vehicles ADD COLUMN unitSystem TEXT NOT NULL DEFAULT 'METRIC'")
     }
 }
