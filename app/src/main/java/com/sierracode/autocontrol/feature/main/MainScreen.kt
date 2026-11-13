@@ -68,7 +68,7 @@ fun MainScreen(
     onRegisterFuel: () -> Unit,
     onRegisterMaintenance: () -> Unit,
     onEditDocument: (String) -> Unit,
-    onDocumentClick: (String) -> Unit, // <-- PARÁMETRO AÑADIDO
+    onDocumentClick: (String) -> Unit,
     onOpenReminders: () -> Unit,
     onOpenSettings: () -> Unit,
     onAddDocument: () -> Unit,
@@ -142,15 +142,14 @@ fun MainScreen(
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 DashboardScreen(
                     vehicleId = vId,
-                    vehicleName = vehicleName,
                     onBack = onBackToVehicles,
+                    onEditVehicle = onEditVehicle,
+                    onSwitchVehicle = onSwitchVehicle, // <-- AÑADIDO AQUÍ
                     onRegisterExpense = onRegisterExpense,
                     onRegisterFuel = onRegisterFuel,
                     onRegisterMaintenance = onRegisterMaintenance,
                     onOpenReminders = onOpenReminders,
-                    onOpenSettings = onOpenSettings,
-                    onSwitchVehicle = onSwitchVehicle,
-                    onEditVehicle = onEditVehicle
+                    onOpenSettings = onOpenSettings
                 )
             }
             composable(BottomNavItem.Expenses.route) { backStackEntry ->
@@ -185,7 +184,7 @@ fun MainScreen(
                     vehicleName = vehicleName,
                     onAddClick = onAddDocument,
                     onEditClick = onEditDocument,
-                    onDocumentClick = onDocumentClick // <-- PASADO A DOCUMENTS SCREEN
+                    onDocumentClick = onDocumentClick
                 )
             }
         }

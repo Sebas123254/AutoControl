@@ -44,6 +44,7 @@ class VehicleEditViewModel @Inject constructor(
     var year by mutableStateOf("")
     var plates by mutableStateOf("")
     var odometer by mutableStateOf("")
+    var purchasePrice by mutableStateOf("") // NUEVO
 
     var currencyCode by mutableStateOf("MXN")
     var unitSystem by mutableStateOf("METRIC")
@@ -51,16 +52,15 @@ class VehicleEditViewModel @Inject constructor(
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
-    // NUEVO: Rastreo de cambios para advertir al usuario
     var hasUnsavedChanges by mutableStateOf(false)
         private set
 
-    // NUEVOS: Métodos de actualización
     fun updateBrand(v: String) { brand = v; hasUnsavedChanges = true }
     fun updateModel(v: String) { model = v; hasUnsavedChanges = true }
     fun updateYear(v: String) { year = v; hasUnsavedChanges = true }
     fun updatePlates(v: String) { plates = v; hasUnsavedChanges = true }
     fun updateOdometer(v: String) { odometer = v; hasUnsavedChanges = true }
+    fun updatePurchasePrice(v: String) { purchasePrice = v; hasUnsavedChanges = true; error = null }
     fun updateCurrency(v: String) { currencyCode = v; hasUnsavedChanges = true }
     fun updateUnits(v: String) { unitSystem = v; hasUnsavedChanges = true }
 
@@ -78,6 +78,7 @@ class VehicleEditViewModel @Inject constructor(
                     odometer = odoDisplay.toString()
 
                     currencyCode = v.currencyCode
+                    purchasePrice = v.purchasePriceCents?.let { (it / 100.0).toString() } ?: ""
                 }
             }
         } else {
@@ -94,6 +95,13 @@ class VehicleEditViewModel @Inject constructor(
             return
         }
 
+        val priceDouble = purchasePrice.toDoubleOrNull()
+        if (purchasePrice.isNotBlank() && (priceDouble == null || priceDouble < 0 || priceDouble > 10_000_000.0)) {
+            error = "El precio de compra debe ser válido y menor a 10 millones."
+            return
+        }
+
+        val priceCents = priceDouble?.times(100)?.roundToLong()
         val odoInput = odometer.toDoubleOrNull() ?: 0.0
         val odoKm = if (unitSystem == "METRIC") odoInput.roundToLong() else UnitConverter.milesToKm(odoInput)
 
@@ -108,13 +116,11 @@ class VehicleEditViewModel @Inject constructor(
                     plates = plates.takeIf { it.isNotBlank() },
                     odometer = odoKm,
                     currencyCode = currencyCode,
-                    unitSystem = unitSystem
+                    unitSystem = unitSystem,
+                    purchasePriceCents = priceCents // <-- NUEVO
                 )
                 repo.upsert(vehicle)
-
-                // FORZAMOS QUE ESTE VEHÍCULO SEA EL ACTIVO
                 settingsStore.setActiveVehicle(vehicle.id)
-
                 hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
@@ -139,26 +145,17 @@ fun VehicleEditScreen(
     var showDiscardDialog by remember { mutableStateOf(false) }
     val isEditing = vehicleId != null
 
-    // NUEVO: Interceptar botón Atrás si hay cambios sin guardar
-    BackHandler(enabled = vm.hasUnsavedChanges) {
-        showDiscardDialog = true
-    }
+    BackHandler(enabled = vm.hasUnsavedChanges) { showDiscardDialog = true }
 
-    // NUEVO: Diálogo de descarte
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
             title = { Text(stringResource(R.string.discard_changes_title)) },
             text = { Text(stringResource(R.string.discard_changes_msg)) },
             confirmButton = {
-                TextButton(onClick = {
-                    showDiscardDialog = false
-                    onDone()
-                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { showDiscardDialog = false; onDone() }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
-            }
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) } }
         )
     }
 
@@ -167,9 +164,7 @@ fun VehicleEditScreen(
             TopAppBar(
                 title = { Text(if (vehicleId == null) "Nuevo Vehículo" else "Editar Vehículo") },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
-                    }) {
+                    IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
                     }
                 }
@@ -177,116 +172,31 @@ fun VehicleEditScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            OutlinedTextField(
-                value = vm.brand,
-                onValueChange = { vm.updateBrand(it) },
-                label = { Text("Marca (Ej. Volkswagen) *") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = vm.model,
-                onValueChange = { vm.updateModel(it) },
-                label = { Text("Modelo (Ej. Vocho) *") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = vm.year,
-                onValueChange = { vm.updateYear(it) },
-                label = { Text("Año (Ej. 1998) *") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = vm.plates,
-                onValueChange = { vm.updatePlates(it) },
-                label = { Text("Placas (Opcional)") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            OutlinedTextField(value = vm.brand, onValueChange = { vm.updateBrand(it) }, label = { Text("Marca (Ej. Volkswagen) *") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = vm.model, onValueChange = { vm.updateModel(it) }, label = { Text("Modelo (Ej. Vocho) *") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = vm.year, onValueChange = { vm.updateYear(it) }, label = { Text("Año (Ej. 1998) *") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = vm.plates, onValueChange = { vm.updatePlates(it) }, label = { Text("Placas (Opcional)") }, modifier = Modifier.fillMaxWidth())
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            Text(
-                text = "¿Cómo registrarás este vehículo? *",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Las unidades pueden cambiarse después. La divisa requerirá conversión.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("¿Cómo registrarás este vehículo? *", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             ExposedDropdownMenuBox(expanded = expandedUnits, onExpandedChange = { expandedUnits = !expandedUnits }) {
-                OutlinedTextField(
-                    value = if (vm.unitSystem == "METRIC") "Métrico (km, L)" else "Imperial (mi, gal)",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Sistema de unidades") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedUnits) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
+                OutlinedTextField(value = if (vm.unitSystem == "METRIC") "Métrico (km, L)" else "Imperial (mi, gal)", onValueChange = {}, readOnly = true, label = { Text("Sistema de unidades") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedUnits) }, modifier = Modifier.menuAnchor().fillMaxWidth())
                 ExposedDropdownMenu(expanded = expandedUnits, onDismissRequest = { expandedUnits = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Métrico (km, L)") },
-                        onClick = { vm.updateUnits("METRIC"); expandedUnits = false }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Imperial (mi, gal)") },
-                        onClick = { vm.updateUnits("US"); expandedUnits = false }
-                    )
+                    DropdownMenuItem(text = { Text("Métrico (km, L)") }, onClick = { vm.updateUnits("METRIC"); expandedUnits = false })
+                    DropdownMenuItem(text = { Text("Imperial (mi, gal)") }, onClick = { vm.updateUnits("US"); expandedUnits = false })
                 }
             }
 
             ExposedDropdownMenuBox(expanded = expandedCurrency, onExpandedChange = { if (!isEditing) expandedCurrency = !expandedCurrency }) {
-                OutlinedTextField(
-                    value = vm.currencyCode,
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = !isEditing,
-                    label = { Text("Divisa") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCurrency) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
+                OutlinedTextField(value = vm.currencyCode, onValueChange = {}, readOnly = true, enabled = !isEditing, label = { Text("Divisa") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCurrency) }, modifier = Modifier.menuAnchor().fillMaxWidth())
                 ExposedDropdownMenu(expanded = expandedCurrency, onDismissRequest = { expandedCurrency = false }) {
                     listOf("MXN", "USD", "CAD", "EUR", "GBP").forEach { code ->
-                        DropdownMenuItem(
-                            text = { Text(code) },
-                            onClick = { vm.updateCurrency(code); expandedCurrency = false }
-                        )
+                        DropdownMenuItem(text = { Text(code) }, onClick = { vm.updateCurrency(code); expandedCurrency = false })
                     }
-                }
-            }
-
-            if (isEditing) {
-                Text(
-                    text = "El cambio de divisa se hace en Ajustes del vehículo (Próximamente)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Vista previa", style = MaterialTheme.typography.labelMedium)
-                    Spacer(Modifier.height(4.dp))
-                    val unit = if (vm.unitSystem == "METRIC") "km" else "mi"
-                    val moneySymbol = when(vm.currencyCode) { "MXN" -> "$"; "USD" -> "$"; "EUR" -> "€"; "GBP" -> "£"; else -> "$" }
-
-                    Text(
-                        text = "Odómetro: 45,000 $unit · Gasto: $moneySymbol 1,234.50 ${vm.currencyCode}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
                 }
             }
 
@@ -301,26 +211,24 @@ fun VehicleEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            vm.error?.let {
-                Text(text = it, color = MaterialTheme.colorScheme.error)
-            }
+            // NUEVO CAMPO DE PRECIO DE COMPRA
+            OutlinedTextField(
+                value = vm.purchasePrice,
+                onValueChange = { vm.updatePurchasePrice(it) },
+                label = { Text("Precio original o de compra (Opcional)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                suffix = { Text(vm.currencyCode) },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            vm.error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
             Button(
-                onClick = {
-                    vm.save {
-                        // NUEVO: Mensaje de confirmación antes de salir
-                        Toast.makeText(context, "Vehículo guardado correctamente", Toast.LENGTH_SHORT).show()
-                        onDone()
-                    }
-                },
+                onClick = { vm.save { Toast.makeText(context, "Vehículo guardado correctamente", Toast.LENGTH_SHORT).show(); onDone() } },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
-                } else {
-                    Text("Guardar Vehículo")
-                }
+                if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary) else Text("Guardar Vehículo")
             }
         }
     }

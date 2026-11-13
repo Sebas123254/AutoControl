@@ -132,13 +132,6 @@ class MaintenanceEditViewModel @Inject constructor(
                     description = selectedCategory!!.name
                 )
 
-                val detail = MaintenanceDetailEntity(
-                    expenseId = expenseId,
-                    serviceName = selectedCategory!!.name,
-                    workshop = workshop.takeIf { it.isNotBlank() },
-                    nextOdometer = nextOdoKm
-                )
-
                 var attachment: AttachmentEntity? = null
                 val currentUri = selectedImageUri
                 if (currentUri != null) {
@@ -154,8 +147,6 @@ class MaintenanceEditViewModel @Inject constructor(
                         )
                     }
                 }
-
-                expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
                 var updatedScheduleId: String? = null
                 if (odoKm != null) {
@@ -182,6 +173,17 @@ class MaintenanceEditViewModel @Inject constructor(
                         updatedScheduleId = newSchedule.id
                     }
                 }
+
+                // CORRECCIÓN: Se asigna el scheduleId al detalle para vincular el gasto con la programación
+                val detail = MaintenanceDetailEntity(
+                    expenseId = expenseId,
+                    scheduleId = updatedScheduleId,
+                    serviceName = selectedCategory!!.name,
+                    workshop = workshop.takeIf { it.isNotBlank() },
+                    nextOdometer = nextOdoKm
+                )
+
+                expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
                 if (updatedScheduleId != null) {
                     val triggerMillis = LocalDate.now().plusMonths(1)

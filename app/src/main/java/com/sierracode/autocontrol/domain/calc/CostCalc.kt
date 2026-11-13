@@ -15,3 +15,12 @@ fun costPerKm(input: CostPerKmInput): Double? {
     if (km <= 0L) return null
     return input.totalSpentCents.toDouble() / km
 }
+
+/**
+ * Costo total acumulado = precio de compra + gastos totales.
+ * Devuelve null si no hay precio de compra registrado.
+ */
+fun calculateTotalCost(purchasePriceCents: Long?, totalSpentCents: Long): Long? {
+    if (purchasePriceCents == null) return null
+    return purchasePriceCents + totalSpentCents
+}

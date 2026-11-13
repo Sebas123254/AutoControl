@@ -213,4 +213,9 @@
     <string name="cd_maint_soon">Mantenimiento próximo</string>
     <string name="cd_maint_ok">Mantenimiento al día</string>
     <string name="cd_maint_unknown">Mantenimiento sin datos</string>
+
+    <plurals name="expenses_count">
+        <item quantity="one">%d gasto</item>
+        <item quantity="other">%d gastos</item>
+    </plurals>
 </resources>
