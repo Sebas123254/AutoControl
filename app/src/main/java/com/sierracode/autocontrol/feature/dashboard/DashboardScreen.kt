@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,7 +43,7 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 data class EvaluatedSchedule(
-    val id: String, // <-- Añadido para poder borrar
+    val id: String,
     val name: String,
     val urgency: Urgency,
     val remainingKm: Long?,
@@ -142,6 +144,9 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val allVehicles = vehicleRepo.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun loadVehicle(id: String) {
         vehicleIdFlow.value = id
     }
@@ -157,12 +162,15 @@ class DashboardViewModel @Inject constructor(
 @Composable
 fun DashboardScreen(
     vehicleId: String,
+    vehicleName: String,
     onBack: () -> Unit,
     onRegisterExpense: () -> Unit,
     onRegisterFuel: () -> Unit,
     onRegisterMaintenance: () -> Unit,
     onOpenReminders: () -> Unit,
-    onOpenSettings: () -> Unit, // <-- NUEVO PARÁMETRO
+    onOpenSettings: () -> Unit,
+    onSwitchVehicle: (String) -> Unit,
+    onEditVehicle: () -> Unit,
     vm: DashboardViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) {
@@ -174,6 +182,7 @@ fun DashboardScreen(
     val fuelStats by vm.fuelStats.collectAsState()
     val costMetrics by vm.costMetrics.collectAsState()
     val schedules by vm.schedules.collectAsState()
+    val allVehicles by vm.allVehicles.collectAsState()
 
     var scheduleToDelete by remember { mutableStateOf<EvaluatedSchedule?>(null) }
 
@@ -197,19 +206,79 @@ fun DashboardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.dashboard_title), fontWeight = FontWeight.Bold) },
+                title = {
+                    var showSwitchMenu by remember { mutableStateOf(false) }
+                    val canSwitch = allVehicles.size > 1
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable(enabled = canSwitch) { showSwitchMenu = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = vehicleName.ifBlank { stringResource(R.string.dashboard_title) },
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            if (canSwitch) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = stringResource(R.string.cd_switch_vehicle)
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showSwitchMenu,
+                            onDismissRequest = { showSwitchMenu = false }
+                        ) {
+                            allVehicles.forEach { v ->
+                                DropdownMenuItem(
+                                    text = { Text("${v.brand} ${v.model}") },
+                                    onClick = {
+                                        showSwitchMenu = false
+                                        if (v.id != vehicleId) onSwitchVehicle(v.id)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.DirectionsCar, contentDescription = stringResource(R.string.vehicles_title))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back_to_vehicles)
+                        )
                     }
                 },
                 actions = {
-                    // NUEVOS ACCESOS RÁPIDOS
                     IconButton(onClick = onOpenReminders) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Recordatorios")
+                        Icon(Icons.Default.Notifications, contentDescription = stringResource(R.string.reminders_title))
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Ajustes")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title))
+                    }
+                    var showMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.cd_more_options)
+                            )
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.cd_edit_vehicle)) },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onEditVehicle()
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -265,7 +334,7 @@ fun DashboardScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { scheduleToDelete = schedule }, // <-- CLIC PARA BORRAR
+                                .clickable { scheduleToDelete = schedule },
                             colors = CardDefaults.cardColors(containerColor = color)
                         ) {
                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

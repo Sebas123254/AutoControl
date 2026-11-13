@@ -13,7 +13,7 @@ import java.util.Calendar
 class ReminderWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
-    private val reminderRepo: ReminderRepository // <-- REPOSITORIO
+    private val reminderRepo: ReminderRepository
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
@@ -30,7 +30,15 @@ class ReminderWorker @AssistedInject constructor(
         val dueReminders = reminderRepo.getDueReminders(now, startOfDay)
 
         for (reminder in dueReminders) {
-            Notifications.show(applicationContext, reminder.id, reminder.title, reminder.body)
+            Notifications.show(
+                context = applicationContext,
+                id = reminder.id,
+                title = reminder.title,
+                body = reminder.body,
+                vehicleId = reminder.vehicleId,
+                sourceType = reminder.sourceType,
+                sourceId = reminder.sourceId
+            )
             reminderRepo.markNotified(reminder.id, now)
         }
 

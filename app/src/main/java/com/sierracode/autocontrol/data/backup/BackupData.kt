@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class BackupData(
-    val schemaVersion: Int = 3,
+    val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
     val appVersion: String = "1.0.0",
     val exportedAt: Long,
     val vehicles: List<VehicleDto>,
@@ -18,7 +18,11 @@ data class BackupData(
     val maintenanceSchedules: List<MaintenanceScheduleDto> = emptyList(),
     val reminders: List<ReminderDto> = emptyList(),
     val goals: List<GoalDto> = emptyList()
-)
+) {
+    companion object {
+        const val CURRENT_SCHEMA_VERSION = 5 // <-- SUBIDO A 5
+    }
+}
 
 @Serializable
 data class VehicleDto(
@@ -33,7 +37,9 @@ data class VehicleDto(
 data class ExpenseDto(
     val id: String, val vehicleId: String, val type: String, val categoryId: String,
     val amountCents: Long, val dateEpochDay: Long, val odometer: Long?,
-    val description: String?, val establishment: String?, val paymentMethod: String?,
+    val description: String?,
+    val customCategoryName: String? = null, // <-- NUEVO
+    val establishment: String?, val paymentMethod: String?,
     val notes: String?, val createdAt: Long, val updatedAt: Long
 )
 

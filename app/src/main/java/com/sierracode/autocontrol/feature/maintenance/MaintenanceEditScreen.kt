@@ -32,11 +32,7 @@ import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.util.ImageUtils
-import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
-import com.sierracode.autocontrol.data.local.entity.CategoryEntity
-import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
-import com.sierracode.autocontrol.data.local.entity.MaintenanceDetailEntity
-import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
+import com.sierracode.autocontrol.data.local.entity.*
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.*
@@ -48,6 +44,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.math.roundToLong
@@ -57,7 +54,8 @@ class MaintenanceEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
     private val scheduleRepo: ScheduleRepository,
-    private val settingsStore: SettingsStore, // <-- INYECTADO
+    private val reminderRepo: ReminderRepository,
+    private val settingsStore: SettingsStore,
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -159,6 +157,7 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
+                var updatedScheduleId: String? = null
                 if (odoKm != null) {
                     val existingSchedule = scheduleRepo.getActiveByName(vehicleId, selectedCategory!!.name)
 
@@ -170,6 +169,7 @@ class MaintenanceEditViewModel @Inject constructor(
                             intervalKm = interval
                         )
                         scheduleRepo.upsert(updatedSchedule)
+                        updatedScheduleId = updatedSchedule.id
                     } else if (nextOdoKm != null) {
                         val newSchedule = MaintenanceScheduleEntity(
                             vehicleId = vehicleId,
@@ -179,7 +179,25 @@ class MaintenanceEditViewModel @Inject constructor(
                             lastDateEpochDay = LocalDate.now().toEpochDay()
                         )
                         scheduleRepo.upsert(newSchedule)
+                        updatedScheduleId = newSchedule.id
                     }
+                }
+
+                if (updatedScheduleId != null) {
+                    val triggerMillis = LocalDate.now().plusMonths(1)
+                        .atStartOfDay(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli()
+
+                    val reminder = ReminderEntity(
+                        vehicleId = vehicleId,
+                        sourceType = "MAINTENANCE",
+                        sourceId = updatedScheduleId,
+                        title = "Mantenimiento: ${selectedCategory!!.name}",
+                        body = "Tu vehículo podría necesitar este servicio pronto.",
+                        triggerAtEpochMillis = triggerMillis
+                    )
+                    reminderRepo.upsert(reminder)
                 }
 
                 if (odoKm != null && odoKm > 0) {

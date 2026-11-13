@@ -36,13 +36,13 @@ class SettingsViewModel @Inject constructor(
     val darkMode = settings.darkMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val isPro = settings.isPro.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    // NUEVOS FLUJOS
     val currencyCode = settings.currencyCode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "MXN")
     val unitSystem = settings.unitSystem.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitSystem.METRIC)
 
     fun setTheme(mode: Boolean?) = viewModelScope.launch { settings.setDark(mode) }
     fun setCurrency(code: String) = viewModelScope.launch { settings.setCurrency(code) }
     fun setUnitSystem(system: UnitSystem) = viewModelScope.launch { settings.setUnitSystem(system) }
+    fun setPro(isPro: Boolean) = viewModelScope.launch { settings.setPro(isPro) } // <-- NUEVO
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,8 +92,6 @@ fun SettingsScreen(
             Text("Región y Unidades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-
-                    // Selector de Divisa
                     ExposedDropdownMenuBox(expanded = showCurrencyMenu, onExpandedChange = { showCurrencyMenu = !showCurrencyMenu }) {
                         OutlinedTextField(
                             value = currency,
@@ -113,7 +111,6 @@ fun SettingsScreen(
                         }
                     }
 
-                    // Selector de Unidades
                     Text("Sistema de unidades", style = MaterialTheme.typography.bodyLarge)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ThemeChip(
@@ -137,12 +134,25 @@ fun SettingsScreen(
             // --- SUSCRIPCIÓN ---
             Text(stringResource(R.string.settings_subscription), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(32.dp), tint = if (isPro) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(if (isPro) R.string.settings_pro_title else R.string.settings_free_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(stringResource(if (isPro) R.string.settings_pro_desc else R.string.settings_free_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(32.dp), tint = if (isPro) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(if (isPro) R.string.settings_pro_title else R.string.settings_free_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(stringResource(if (isPro) R.string.settings_pro_desc else R.string.settings_free_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    // NUEVO BOTÓN DE SIMULACIÓN
+                    Button(
+                        onClick = { vm.setPro(!isPro) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isPro) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(if (isPro) "Volver a Free (Simulación)" else "Simular Compra PRO")
                     }
                 }
             }
@@ -165,7 +175,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(R.string.settings_dev), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(stringResource(R.string.settings_version, "0.1.0"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

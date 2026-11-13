@@ -38,7 +38,6 @@ class VehicleEditViewModel @Inject constructor(
     var error by mutableStateOf<String?>(null)
 
     init {
-        // Si recibimos un ID, cargamos los datos para editar
         if (vehicleId != null && vehicleId.isNotBlank()) {
             viewModelScope.launch {
                 repo.get(vehicleId)?.let { v ->

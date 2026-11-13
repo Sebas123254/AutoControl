@@ -45,7 +45,7 @@ class BackupManager @Inject constructor(
                 val jsonString = inputStream.bufferedReader().use { it.readText() }
                 val backup = json.decodeFromString(BackupData.serializer(), jsonString)
 
-                if (backup.schemaVersion > 3) {
+                if (backup.schemaVersion > BackupData.CURRENT_SCHEMA_VERSION) {
                     return@withContext Result.failure(Exception("Versión de respaldo no soportada."))
                 }
 
@@ -80,7 +80,7 @@ class BackupManager @Inject constructor(
 
 // --- Conversiones Entity -> DTO ---
 private fun VehicleEntity.toDto() = VehicleDto(id, brand, model, year, trim, color, plates, vin, fuelType, tankLiters, odometer, photoUri, purchaseDateEpochDay, purchasePriceCents, notes, createdAt, updatedAt)
-private fun ExpenseEntity.toDto() = ExpenseDto(id, vehicleId, type, categoryId, amountCents, dateEpochDay, odometer, description, establishment, paymentMethod, notes, createdAt, updatedAt)
+private fun ExpenseEntity.toDto() = ExpenseDto(id, vehicleId, type, categoryId, amountCents, dateEpochDay, odometer, description, customCategoryName, establishment, paymentMethod, notes, createdAt, updatedAt)
 private fun FuelDetailEntity.toDto() = FuelDetailDto(expenseId, litersMilli, pricePerLiterCents, fuelType, station, fullTank)
 private fun MaintenanceDetailEntity.toDto() = MaintenanceDetailDto(expenseId, scheduleId, serviceName, workshop, nextOdometer, nextDateEpochDay)
 private fun DocumentEntity.toDto() = DocumentDto(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
@@ -91,7 +91,7 @@ private fun GoalEntity.toDto() = GoalDto(id, vehicleId, title, notes, estimatedC
 
 // --- Conversiones DTO -> Entity ---
 private fun VehicleDto.toEntity() = VehicleEntity(id, brand, model, year, trim, color, plates, vin, fuelType, tankLiters, odometer, photoUri, purchaseDateEpochDay, purchasePriceCents, notes, createdAt, updatedAt)
-private fun ExpenseDto.toEntity() = ExpenseEntity(id, vehicleId, type, categoryId, amountCents, dateEpochDay, odometer, description, establishment, paymentMethod, notes, createdAt, updatedAt)
+private fun ExpenseDto.toEntity() = ExpenseEntity(id, vehicleId, type, categoryId, amountCents, dateEpochDay, odometer, description, customCategoryName, establishment, paymentMethod, notes, createdAt, updatedAt)
 private fun FuelDetailDto.toEntity() = FuelDetailEntity(expenseId, litersMilli, pricePerLiterCents, fuelType, station, fullTank)
 private fun MaintenanceDetailDto.toEntity() = MaintenanceDetailEntity(expenseId, scheduleId, serviceName, workshop, nextOdometer, nextDateEpochDay)
 private fun DocumentDto.toEntity() = DocumentEntity(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)

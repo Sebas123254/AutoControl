@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable // <-- IMPORT AGREGADO
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -19,6 +18,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.data.preferences.SettingsStore
+import com.sierracode.autocontrol.feature.documents.DocumentDetailScreen // <-- NUEVO
 import com.sierracode.autocontrol.feature.documents.DocumentEditScreen
 import com.sierracode.autocontrol.feature.expenses.ExpenseEditScreen
 import com.sierracode.autocontrol.feature.fuel.FuelEditScreen
@@ -36,6 +36,12 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.delay
 import com.sierracode.autocontrol.feature.reminders.RemindersScreen
+
+data class NavIntent(
+    val vehicleId: String,
+    val sourceType: String,
+    val sourceId: String
+)
 
 sealed class Route(val path: String) {
     data object Onboarding : Route("onboarding")
@@ -70,6 +76,11 @@ sealed class Route(val path: String) {
         fun build(vehicleId: String, docId: String? = null) = "document_edit/$vehicleId?documentId=${docId ?: ""}"
     }
 
+    // NUEVA RUTA: DocumentDetail
+    data object DocumentDetail : Route("document_detail/{vehicleId}/{documentId}") {
+        fun build(vehicleId: String, docId: String) = "document_detail/$vehicleId/$docId"
+    }
+
     data object GoalEdit : Route("goal_edit/{vehicleId}?goalId={goalId}") {
         fun build(vehicleId: String, goalId: String? = null) = "goal_edit/$vehicleId?goalId=${goalId ?: ""}"
     }
@@ -86,7 +97,11 @@ interface SettingsEntry {
 }
 
 @Composable
-fun AppNavHost(nav: NavHostController) {
+fun AppNavHost(
+    nav: NavHostController,
+    navIntent: NavIntent? = null,
+    onIntentConsumed: () -> Unit = {}
+) {
     val context = LocalContext.current
     val settings = remember {
         EntryPointAccessors.fromApplication(context, SettingsEntry::class.java).settings()
@@ -100,11 +115,23 @@ fun AppNavHost(nav: NavHostController) {
         minTimePassed = true
     }
 
-    var autoNavigateToLastVehicle by rememberSaveable { mutableStateOf(true) }
-
     if (onboarded == null || !minTimePassed) {
         SplashScreen()
     } else {
+        LaunchedEffect(navIntent, onboarded, minTimePassed) {
+            if (navIntent != null && onboarded == true && minTimePassed) {
+                nav.navigate(Route.Main.build(navIntent.vehicleId)) {
+                    popUpTo(Route.Vehicles.path) { inclusive = false }
+                }
+
+                if (navIntent.sourceType == "DOCUMENT") {
+                    nav.navigate(Route.DocumentEdit.build(navIntent.vehicleId, navIntent.sourceId))
+                }
+
+                onIntentConsumed()
+            }
+        }
+
         NavHost(
             navController = nav,
             startDestination = if (onboarded == true) Route.Vehicles.path else Route.Onboarding.path
@@ -115,8 +142,6 @@ fun AppNavHost(nav: NavHostController) {
 
             composable(Route.Vehicles.path) {
                 VehiclesScreen(
-                    autoNavigateToLast = autoNavigateToLastVehicle,
-                    onNavigated = { autoNavigateToLastVehicle = false },
                     onAddClick = { nav.navigate(Route.VehicleEdit.build(null)) },
                     onVehicleClick = { id -> nav.navigate(Route.Main.build(id)) },
                     onEditClick = { id -> nav.navigate(Route.VehicleEdit.build(id)) },
@@ -143,11 +168,18 @@ fun AppNavHost(nav: NavHostController) {
                     onRegisterFuel = { nav.navigate(Route.FuelEdit.build(id)) },
                     onRegisterMaintenance = { nav.navigate(Route.MaintenanceEdit.build(id)) },
                     onAddDocument = { nav.navigate(Route.DocumentEdit.build(id)) },
+                    onDocumentClick = { docId -> nav.navigate(Route.DocumentDetail.build(id, docId)) }, // <-- NUEVO
                     onEditDocument = { docId -> nav.navigate(Route.DocumentEdit.build(id, docId)) },
                     onOpenReminders = { nav.navigate(Route.Reminders.build(id)) },
                     onOpenSettings = { nav.navigate(Route.Settings.path) },
                     onAddGoal = { nav.navigate(Route.GoalEdit.build(id)) },
-                    onGoalClick = { goalId -> nav.navigate(Route.GoalDetail.build(id, goalId)) }
+                    onGoalClick = { goalId -> nav.navigate(Route.GoalDetail.build(id, goalId)) },
+                    onSwitchVehicle = { newId ->
+                        nav.navigate(Route.Main.build(newId)) {
+                            popUpTo(Route.Vehicles.path) { inclusive = false }
+                        }
+                    },
+                    onEditVehicle = { nav.navigate(Route.VehicleEdit.build(id)) }
                 )
             }
 
@@ -155,7 +187,13 @@ fun AppNavHost(nav: NavHostController) {
                 val vId = back.arguments!!.getString("vehicleId")!!
                 val eId = back.arguments?.getString("expenseId")?.takeIf { it.isNotBlank() }
                 val gId = back.arguments?.getString("goalId")?.takeIf { it.isNotBlank() }
-                ExpenseEditScreen(vehicleId = vId, expenseId = eId, goalId = gId, onDone = { nav.popBackStack() })
+                ExpenseEditScreen(
+                    vehicleId = vId,
+                    expenseId = eId,
+                    goalId = gId,
+                    onDone = { nav.popBackStack() },
+                    onOpenSettings = { nav.navigate(Route.Settings.path) }
+                )
             }
 
             composable(Route.FuelEdit.path) { back ->
@@ -171,6 +209,17 @@ fun AppNavHost(nav: NavHostController) {
             composable(Route.DocumentEdit.path) { back ->
                 val vId = back.arguments!!.getString("vehicleId")!!
                 DocumentEditScreen(onDone = { nav.popBackStack() })
+            }
+
+            // NUEVO COMPOSABLE
+            composable(Route.DocumentDetail.path) { back ->
+                DocumentDetailScreen(
+                    onBack = { nav.popBackStack() },
+                    onEditClick = { docId ->
+                        val vId = back.arguments?.getString("vehicleId") ?: return@DocumentDetailScreen
+                        nav.navigate(Route.DocumentEdit.build(vId, docId))
+                    }
+                )
             }
 
             composable(Route.Reminders.path) { back ->

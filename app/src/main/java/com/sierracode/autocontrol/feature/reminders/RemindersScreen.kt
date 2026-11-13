@@ -30,7 +30,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
+import java.time.Instant
+import java.time.ZoneId
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -153,7 +154,11 @@ fun ReminderCard(
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
-    val dateEpochDay = TimeUnit.MILLISECONDS.toDays(reminder.triggerAtEpochMillis)
+    // CORRECCIÓN: Conversión de milisegundos UTC a LocalDate en la zona horaria local
+    val dateEpochDay = Instant.ofEpochMilli(reminder.triggerAtEpochMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
+        .toEpochDay()
     val dateText = formatDate(dateEpochDay)
 
     Card(modifier = Modifier.fillMaxWidth()) {

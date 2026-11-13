@@ -1,6 +1,7 @@
 package com.sierracode.autocontrol.data.repository
 
 import androidx.room.withTransaction
+import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.dao.DocumentDao
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
@@ -31,20 +32,16 @@ class DocumentRepositoryImpl @Inject constructor(
         db.withTransaction {
             dao.upsert(document)
 
-            // 1. Borramos cualquier recordatorio previo para evitar duplicados al editar
             db.reminderDao().deleteBySource("DOCUMENT", document.id)
 
-            // 2. Verificamos que haya fecha de vencimiento
             val expiry = document.expiryDateEpochDay ?: return@withTransaction
             val triggerDay = expiry - document.reminderLeadDays
 
-            // 3. Convertimos a milisegundos usando la zona horaria local del dispositivo
             val triggerMillis = LocalDate.ofEpochDay(triggerDay)
                 .atStartOfDay(ZoneId.systemDefault())
                 .toInstant()
                 .toEpochMilli()
 
-            // 4. Creamos el nuevo recordatorio
             val reminder = ReminderEntity(
                 vehicleId = document.vehicleId,
                 sourceType = "DOCUMENT",
@@ -58,19 +55,24 @@ class DocumentRepositoryImpl @Inject constructor(
     }
 
     override suspend fun delete(id: String) {
+        val doc = dao.getById(id)
         db.withTransaction {
             dao.deleteById(id)
             db.reminderDao().deleteBySource("DOCUMENT", id)
         }
+        // Limpieza física
+        ImageUtils.deleteLocalFile(doc?.fileUri)
     }
 
     override suspend fun deleteMultiple(ids: List<String>) {
+        val docs = ids.mapNotNull { dao.getById(it) }
         db.withTransaction {
             dao.deleteAllByIds(ids)
-            // Borramos los recordatorios asociados para no dejar basura huérfana
             ids.forEach { docId ->
                 db.reminderDao().deleteBySource("DOCUMENT", docId)
             }
         }
+        // Limpieza física
+        docs.forEach { ImageUtils.deleteLocalFile(it.fileUri) }
     }
 }

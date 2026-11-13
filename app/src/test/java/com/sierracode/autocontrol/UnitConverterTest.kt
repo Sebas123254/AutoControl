@@ -3,7 +3,7 @@ package com.sierracode.autocontrol.domain.calc
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
-class CostCalcTest {
+class UnitConverterTest {
     @Test
     fun `costo por km correcto`() {
         // 231,000 centavos ($2,310) / 100,000 km = 2.31 centavos por km

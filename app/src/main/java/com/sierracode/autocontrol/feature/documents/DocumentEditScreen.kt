@@ -1,24 +1,32 @@
 package com.sierracode.autocontrol.feature.documents
 
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
 import com.sierracode.autocontrol.data.repository.DocumentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,15 +43,31 @@ class DocumentEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
-    private val documentId: String? = savedStateHandle["documentId"]
+    // CORRECCIÓN BUG ID: Si viene vacío "", se convierte en null
+    private val documentId: String? = savedStateHandle.get<String>("documentId")?.takeIf { it.isNotBlank() }
 
     var name by mutableStateOf("")
-    var type by mutableStateOf("SEGURO")
+    var type by mutableStateOf("") // D3: Inicia vacío
+    var issueDate by mutableStateOf<LocalDate?>(null)
     var expiryDate by mutableStateOf<LocalDate?>(null)
     var leadDays by mutableStateOf("30")
     var notes by mutableStateOf("")
+    var existingFileUri by mutableStateOf<String?>(null)
+    var selectedFileUri by mutableStateOf<Uri?>(null)
+
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+
+    var hasUnsavedChanges by mutableStateOf(false)
+        private set
+
+    fun updateName(newName: String) { name = newName; hasUnsavedChanges = true; error = null }
+    fun updateType(newType: String) { type = newType; hasUnsavedChanges = true; error = null }
+    fun updateIssueDate(newDate: LocalDate?) { issueDate = newDate; hasUnsavedChanges = true }
+    fun updateExpiryDate(newDate: LocalDate?) { expiryDate = newDate; hasUnsavedChanges = true }
+    fun updateLeadDays(newDays: String) { leadDays = newDays; hasUnsavedChanges = true }
+    fun updateNotes(newNotes: String) { notes = newNotes; hasUnsavedChanges = true }
+    fun updateFileUri(newUri: Uri?) { selectedFileUri = newUri; hasUnsavedChanges = true }
 
     init {
         if (documentId != null) {
@@ -51,33 +75,57 @@ class DocumentEditViewModel @Inject constructor(
                 repo.get(documentId)?.let { doc ->
                     name = doc.name
                     type = doc.type
-                    // Cargamos la fecha (si existe)
+                    issueDate = doc.issueDateEpochDay?.let { LocalDate.ofEpochDay(it) }
                     expiryDate = doc.expiryDateEpochDay?.let { LocalDate.ofEpochDay(it) }
                     leadDays = doc.reminderLeadDays.toString()
                     notes = doc.notes ?: ""
+                    existingFileUri = doc.fileUri
                 }
             }
         }
     }
 
-    fun save(onDone: () -> Unit) {
+    fun save(context: android.content.Context, onDone: () -> Unit) {
         if (name.isBlank() || expiryDate == null) {
             error = "Nombre y fecha de vencimiento son obligatorios"
             return
         }
+        if (type.isBlank()) {
+            error = "Selecciona un tipo de documento"
+            return
+        }
+
         viewModelScope.launch {
             isLoading = true
             try {
+                var finalFileUri = existingFileUri
+
+                if (selectedFileUri != null) {
+                    val mimeType = context.contentResolver.getType(selectedFileUri!!)
+
+                    ImageUtils.deleteLocalFile(existingFileUri)
+
+                    if (mimeType == "application/pdf") {
+                        finalFileUri = ImageUtils.copyToInternalStorage(context, selectedFileUri!!, "pdf")?.toString()
+                    } else {
+                        finalFileUri = ImageUtils.compressAndSave(context, selectedFileUri!!)?.toString()
+                    }
+                }
+
                 val doc = DocumentEntity(
                     id = documentId ?: UUID.randomUUID().toString(),
                     vehicleId = vehicleId,
                     type = type,
                     name = name,
+                    issueDateEpochDay = issueDate?.toEpochDay(),
                     expiryDateEpochDay = expiryDate!!.toEpochDay(),
                     reminderLeadDays = leadDays.toIntOrNull() ?: 30,
+                    fileUri = finalFileUri,
                     notes = notes.takeIf { it.isNotBlank() }
                 )
                 repo.save(doc)
+
+                hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
                 error = "Error: ${e.message}"
@@ -94,14 +142,47 @@ fun DocumentEditScreen(
     onDone: () -> Unit,
     vm: DocumentEditViewModel = hiltViewModel()
 ) {
-    var showDatePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var showExpiryPicker by remember { mutableStateOf(false) }
+    var showIssuePicker by remember { mutableStateOf(false) }
+    var expandedType by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = vm.hasUnsavedChanges) {
+        showDiscardDialog = true
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text(stringResource(R.string.discard_changes_title)) },
+            text = { Text(stringResource(R.string.discard_changes_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onDone()
+                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
+        )
+    }
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) vm.updateFileUri(uri)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Editar Documento") },
+                title = { Text("Documento") },
                 navigationIcon = {
-                    IconButton(onClick = onDone) {
+                    IconButton(onClick = {
+                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
                     }
                 }
@@ -114,12 +195,72 @@ fun DocumentEditScreen(
         ) {
             OutlinedTextField(
                 value = vm.name,
-                onValueChange = { vm.name = it },
+                onValueChange = { vm.updateName(it) },
                 label = { Text("Nombre (Ej. Póliza GNP) *") },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // CAMPO DE FECHA MEJORADO
+            ExposedDropdownMenuBox(expanded = expandedType, onExpandedChange = { expandedType = !expandedType }) {
+                OutlinedTextField(
+                    value = if (vm.type.isBlank()) "" else vm.type,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Tipo de documento *") },
+                    placeholder = { Text("Selecciona un tipo") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedType) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(expanded = expandedType, onDismissRequest = { expandedType = false }) {
+                    listOf("SEGURO", "CIRCULACION", "VERIFICACION", "FACTURA", "OTRO").forEach { t ->
+                        DropdownMenuItem(
+                            text = { Text(t) },
+                            onClick = {
+                                vm.updateType(t)
+                                expandedType = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Fecha de expedición
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = false,
+                    label = { Text("Fecha de Expedición (Opcional)") },
+                    placeholder = { Text("Toca para elegir fecha") },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(modifier = Modifier.matchParentSize().clickable { showIssuePicker = true })
+            }
+
+            if (showIssuePicker) {
+                val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+                val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+                DatePickerDialog(
+                    onDismissRequest = { showIssuePicker = false },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            state.selectedDateMillis?.let { vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
+                            showIssuePicker = false
+                        }) { Text("Aceptar") }
+                    },
+                    dismissButton = { TextButton(onClick = { showIssuePicker = false }) { Text("Cancelar") } }
+                ) { DatePicker(state = state) }
+            }
+
+            // Fecha de vencimiento
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
@@ -138,52 +279,52 @@ fun DocumentEditScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-                // Capa invisible sobre el campo para detectar el clic
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable { showDatePicker = true }
-                )
+                Box(modifier = Modifier.matchParentSize().clickable { showExpiryPicker = true })
             }
 
-            if (showDatePicker) {
-                // El calendario inicia en la fecha seleccionada o en la de hoy
-                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
-                    ?: System.currentTimeMillis()
-
-                val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
-
+            if (showExpiryPicker) {
+                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+                val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
-                    onDismissRequest = { showDatePicker = false },
+                    onDismissRequest = { showExpiryPicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            datePickerState.selectedDateMillis?.let {
-                                vm.expiryDate = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-                            }
-                            showDatePicker = false
+                            state.selectedDateMillis?.let { vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
+                            showExpiryPicker = false
                         }) { Text("Aceptar") }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showDatePicker = false }) {
-                            Text("Cancelar")
-                        }
-                    }
-                ) {
-                    DatePicker(state = datePickerState)
-                }
+                    dismissButton = { TextButton(onClick = { showExpiryPicker = false }) { Text("Cancelar") } }
+                ) { DatePicker(state = state) }
             }
 
             OutlinedTextField(
                 value = vm.leadDays,
-                onValueChange = { vm.leadDays = it },
+                onValueChange = { vm.updateLeadDays(it) },
                 label = { Text("Días de anticipación para avisar") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
 
+            OutlinedButton(
+                onClick = { filePicker.launch(arrayOf("image/*", "application/pdf")) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.AttachFile, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (vm.selectedFileUri != null || vm.existingFileUri != null) "Cambiar archivo adjunto" else "Adjuntar archivo (Opcional)")
+            }
+
+            if (vm.selectedFileUri != null || vm.existingFileUri != null) {
+                Text(
+                    text = "Archivo seleccionado",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
             OutlinedTextField(
                 value = vm.notes,
-                onValueChange = { vm.notes = it },
+                onValueChange = { vm.updateNotes(it) },
                 label = { Text("Notas (Opcional)") },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -191,7 +332,7 @@ fun DocumentEditScreen(
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             Button(
-                onClick = { vm.save(onDone) },
+                onClick = { vm.save(context, onDone) },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {

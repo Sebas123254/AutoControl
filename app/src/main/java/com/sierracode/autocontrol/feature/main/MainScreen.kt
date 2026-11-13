@@ -7,18 +7,33 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.sierracode.autocontrol.data.repository.VehicleRepository
 import com.sierracode.autocontrol.feature.dashboard.DashboardScreen
 import com.sierracode.autocontrol.feature.documents.DocumentsScreen
 import com.sierracode.autocontrol.feature.expenses.ExpensesScreen
 import com.sierracode.autocontrol.feature.goals.GoalsScreen
 import com.sierracode.autocontrol.feature.stats.StatsScreen
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import javax.inject.Inject
 
 sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
     data object Dashboard : BottomNavItem("dashboard/{vehicleId}", Icons.Default.Home, "Inicio")
@@ -26,6 +41,22 @@ sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.grap
     data object Goals : BottomNavItem("goals/{vehicleId}", Icons.Default.Flag, "Objetivos")
     data object Stats : BottomNavItem("stats/{vehicleId}", Icons.Default.BarChart, "Stats")
     data object Documents : BottomNavItem("documents/{vehicleId}", Icons.Default.Folder, "Docs")
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+@HiltViewModel
+class MainViewModel @Inject constructor(
+    private val vehicleRepo: VehicleRepository
+) : ViewModel() {
+    private val vehicleIdFlow = MutableStateFlow("")
+
+    val vehicleName = vehicleIdFlow.flatMapLatest { id ->
+        if (id.isBlank()) flowOf("") else vehicleRepo.observe(id).map { v ->
+            v?.let { "${it.brand} ${it.model}" } ?: ""
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    fun loadVehicle(id: String) { vehicleIdFlow.value = id }
 }
 
 @Composable
@@ -37,12 +68,19 @@ fun MainScreen(
     onRegisterFuel: () -> Unit,
     onRegisterMaintenance: () -> Unit,
     onEditDocument: (String) -> Unit,
+    onDocumentClick: (String) -> Unit, // <-- PARÁMETRO AÑADIDO
     onOpenReminders: () -> Unit,
     onOpenSettings: () -> Unit,
     onAddDocument: () -> Unit,
     onAddGoal: () -> Unit,
-    onGoalClick: (String) -> Unit
+    onGoalClick: (String) -> Unit,
+    onSwitchVehicle: (String) -> Unit,
+    onEditVehicle: () -> Unit
 ) {
+    val vm: MainViewModel = hiltViewModel()
+    LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
+    val vehicleName by vm.vehicleName.collectAsState()
+
     val navController = rememberNavController()
     val items = listOf(
         BottomNavItem.Dashboard,
@@ -104,19 +142,22 @@ fun MainScreen(
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 DashboardScreen(
                     vehicleId = vId,
+                    vehicleName = vehicleName,
                     onBack = onBackToVehicles,
                     onRegisterExpense = onRegisterExpense,
                     onRegisterFuel = onRegisterFuel,
                     onRegisterMaintenance = onRegisterMaintenance,
                     onOpenReminders = onOpenReminders,
-                    onOpenSettings = onOpenSettings
+                    onOpenSettings = onOpenSettings,
+                    onSwitchVehicle = onSwitchVehicle,
+                    onEditVehicle = onEditVehicle
                 )
             }
             composable(BottomNavItem.Expenses.route) { backStackEntry ->
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 ExpensesScreen(
                     vehicleId = vId,
-                    onBack = { /* No hace falta */ },
+                    vehicleName = vehicleName,
                     onEditClick = onEditExpense
                 )
             }
@@ -124,7 +165,7 @@ fun MainScreen(
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 GoalsScreen(
                     vehicleId = vId,
-                    onBack = { /* No hace falta */ },
+                    vehicleName = vehicleName,
                     onAddClick = onAddGoal,
                     onGoalClick = onGoalClick
                 )
@@ -133,16 +174,18 @@ fun MainScreen(
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 StatsScreen(
                     vehicleId = vId,
-                    onBack = { /* No hace falta */ }
+                    vehicleName = vehicleName,
+                    onOpenSettings = onOpenSettings
                 )
             }
             composable(BottomNavItem.Documents.route) { backStackEntry ->
                 val vId = backStackEntry.arguments?.getString("vehicleId") ?: vehicleId
                 DocumentsScreen(
                     vehicleId = vId,
-                    onBack = { /* No hace falta */ },
+                    vehicleName = vehicleName,
                     onAddClick = onAddDocument,
-                    onEditClick = onEditDocument
+                    onEditClick = onEditDocument,
+                    onDocumentClick = onDocumentClick // <-- PASADO A DOCUMENTS SCREEN
                 )
             }
         }

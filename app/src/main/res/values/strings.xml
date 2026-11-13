@@ -11,9 +11,14 @@
     <string name="action_understood">Entendido</string>
     <string name="action_share">Compartir</string>
     <string name="action_delete_plural">Eliminar seleccionados</string>
+    <string name="cd_back_to_vehicles">Volver a Mis vehículos</string>
+    <string name="cd_edit_vehicle">Editar vehículo</string>
+    <string name="cd_switch_vehicle">Cambiar de vehículo</string>
+    <string name="cd_more_options">Más opciones</string>
+    <string name="documents_title">Documentos</string>
 
     <!-- Vehículos -->
-    <string name="vehicles_title">Mis Vehículos</string>
+    <string name="vehicles_title">Mis vehículos</string>
     <string name="vehicles_empty_title">Aún no tienes vehículos</string>
     <string name="vehicles_empty_subtitle">Agrega tu primer auto para empezar.</string>
     <string name="vehicles_add_first">Agregar mi primer auto</string>
@@ -32,7 +37,7 @@
     <string name="vehicles_cancel_selection">Cancelar selección</string>
 
     <!-- Dashboard -->
-    <string name="dashboard_title">Dashboard</string>
+    <string name="dashboard_title">Inicio</string>
     <string name="dashboard_scheduled">Mantenimientos Programados</string>
     <string name="dashboard_status_overdue">🔴 VENCIDO</string>
     <string name="dashboard_status_soon">🟡 PRÓXIMO</string>
@@ -90,6 +95,8 @@
     <string name="expense_edit_err_category">Selecciona una categoría</string>
     <string name="expense_edit_err_generic">Error al guardar: %1$s</string>
     <string name="expense_edit_receipt_desc">Recibo</string>
+    <string name="expense_custom_category_label">¿Qué fue este gasto? *</string>
+    <string name="expense_custom_category_err">Escribe un nombre para el gasto</string>
 
     <!-- Gasolina -->
     <string name="fuel_edit_title">Registrar Gasolina</string>

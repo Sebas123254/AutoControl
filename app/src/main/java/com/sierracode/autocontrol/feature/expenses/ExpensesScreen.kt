@@ -1,32 +1,25 @@
 package com.sierracode.autocontrol.feature.expenses
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -34,9 +27,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -45,6 +35,7 @@ import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.ui.components.EmptyState
+import com.sierracode.autocontrol.core.ui.components.FullScreenImageDialog // <-- NUEVO IMPORT
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.repository.AttachmentRepository
@@ -57,7 +48,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -149,7 +139,7 @@ class ExpensesViewModel @Inject constructor(
 @Composable
 fun ExpensesScreen(
     vehicleId: String,
-    onBack: () -> Unit,
+    vehicleName: String,
     onEditClick: (String) -> Unit,
     vm: ExpensesViewModel = hiltViewModel()
 ) {
@@ -209,7 +199,14 @@ fun ExpensesScreen(
         val expense = vm.selectedExpense!!
         AlertDialog(
             onDismissRequest = { vm.dismissDialog() },
-            title = { Text(expense.description ?: stringResource(R.string.expenses_detail_title)) },
+            title = {
+                val displayTitle = if (expense.customCategoryName != null) {
+                    "Otro · ${expense.customCategoryName}"
+                } else {
+                    expense.description ?: stringResource(R.string.expenses_detail_title)
+                }
+                Text(displayTitle)
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.expenses_amount, formatMoneyCents(expense.amountCents)), fontWeight = FontWeight.Bold)
@@ -225,7 +222,7 @@ fun ExpensesScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(4f / 3f) // En lugar de height fija, usamos proporción
+                                .aspectRatio(4f / 3f)
                                 .padding(top = 8.dp)
                                 .clickable { showFullScreenImage = true }
                         ) {
@@ -293,10 +290,16 @@ fun ExpensesScreen(
                 )
             } else {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.expenses_title), fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.DirectionsCar, contentDescription = stringResource(R.string.vehicles_title))
+                    title = {
+                        Column {
+                            Text(stringResource(R.string.expenses_title), fontWeight = FontWeight.Bold)
+                            if (vehicleName.isNotBlank()) {
+                                Text(
+                                    vehicleName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 )
@@ -349,6 +352,12 @@ fun ExpenseRow(
         }
     } else Modifier
 
+    val displayTitle = if (expense.customCategoryName != null) {
+        "Otro · ${expense.customCategoryName}"
+    } else {
+        expense.description ?: stringResource(R.string.expenses_default_name)
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -375,7 +384,7 @@ fun ExpenseRow(
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = expense.description ?: stringResource(R.string.expenses_default_name),
+                    text = displayTitle,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -391,88 +400,6 @@ fun ExpenseRow(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
-        }
-    }
-}
-
-@Composable
-fun FullScreenImageDialog(imageUri: Uri, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val shareTitle = stringResource(R.string.expenses_share_title)
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        var scale by remember { mutableStateOf(1f) }
-        var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        if (scale > 1f) {
-                            offset += pan
-                        } else {
-                            offset = androidx.compose.ui.geometry.Offset.Zero
-                        }
-                    }
-                }
-        ) {
-            AsyncImage(
-                model = imageUri,
-                contentDescription = stringResource(R.string.expenses_full_screen),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        translationX = offset.x,
-                        translationY = offset.y
-                    ),
-                contentScale = ContentScale.Fit
-            )
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                IconButton(
-                    onClick = {
-                        try {
-                            val file = File(imageUri.path ?: return@IconButton)
-                            val contentUri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                file
-                            )
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "image/*"
-                                putExtra(Intent.EXTRA_STREAM, contentUri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(intent, shareTitle))
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    },
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_share), tint = Color.White)
-                }
-
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close), tint = Color.White)
-                }
-            }
         }
     }
 }

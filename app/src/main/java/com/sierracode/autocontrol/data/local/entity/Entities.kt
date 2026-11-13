@@ -53,6 +53,7 @@ data class ExpenseEntity(
     val dateEpochDay: Long,
     val odometer: Long? = null,
     val description: String? = null,
+    val customCategoryName: String? = null, // <-- NUEVO CAMPO
     val establishment: String? = null,
     val paymentMethod: String? = null,
     val notes: String? = null,
@@ -120,14 +121,13 @@ data class DocumentEntity(
     val type: String,
     val name: String,
     val issueDateEpochDay: Long? = null,
-    val expiryDateEpochDay: Long? = null, // <-- CAMBIO 1: Lo volvemos opcional (Long?)
-    @ColumnInfo(defaultValue = "30") val reminderLeadDays: Int = 30, // <-- CAMBIO 2: Agregamos el valor por defecto
+    val expiryDateEpochDay: Long? = null,
+    @ColumnInfo(defaultValue = "30") val reminderLeadDays: Int = 30,
     val fileUri: String? = null,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
-// CAJÓN 9: Fotos/archivos adjuntos (se queda igual)
 @Entity(tableName = "attachments", indices = [Index(value = ["ownerType", "ownerId"])])
 data class AttachmentEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -139,7 +139,6 @@ data class AttachmentEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
-// CAJÓN 10: Recordatorios (LA NUEVA, BORRA LA VIEJA SI ESTÁ AHÍ)
 @Entity(
     tableName = "reminders",
     foreignKeys = [ForeignKey(VehicleEntity::class, ["id"], ["vehicleId"], onDelete = ForeignKey.CASCADE)],
@@ -148,8 +147,8 @@ data class AttachmentEntity(
 data class ReminderEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val vehicleId: String,
-    val sourceType: String, // "DOCUMENT" o "MAINTENANCE"
-    val sourceId: String,   // El ID del documento o de la plantilla
+    val sourceType: String,
+    val sourceId: String,
     val title: String,
     val body: String,
     val triggerAtEpochMillis: Long,
@@ -169,9 +168,9 @@ data class GoalEntity(
     val notes: String? = null,
     val estimatedCents: Long,
     val estimatedMaxCents: Long? = null,
-    val priority: String = "MEDIA", // "ALTA", "MEDIA", "BAJA"
+    val priority: String = "MEDIA",
     val targetDateEpochDay: Long? = null,
-    val status: String = "PENDIENTE", // "PENDIENTE", "COMPRADO"
+    val status: String = "PENDIENTE",
     val categoryId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null,

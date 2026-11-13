@@ -87,7 +87,7 @@ class GoalsViewModel @Inject constructor(
 @Composable
 fun GoalsScreen(
     vehicleId: String,
-    onBack: () -> Unit,
+    vehicleName: String,
     onAddClick: () -> Unit,
     onGoalClick: (String) -> Unit,
     vm: GoalsViewModel = hiltViewModel()
@@ -119,9 +119,17 @@ fun GoalsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.goals_title), fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.Flag, contentDescription = stringResource(R.string.vehicles_title)) }
+                title = {
+                    Column {
+                        Text(stringResource(R.string.goals_title), fontWeight = FontWeight.Bold)
+                        if (vehicleName.isNotBlank()) {
+                            Text(
+                                vehicleName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             )
         },
@@ -225,7 +233,6 @@ fun GoalListCard(goal: GoalEntity, onClick: () -> Unit, onDelete: () -> Unit) {
 
                 Column(Modifier.weight(1f)) {
                     Text(goal.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    // Texto de prioridad para no depender del color
                     Text(
                         text = priorityText,
                         style = MaterialTheme.typography.labelSmall,

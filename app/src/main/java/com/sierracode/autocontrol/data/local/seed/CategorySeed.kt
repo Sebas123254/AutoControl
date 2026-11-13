@@ -22,14 +22,13 @@ object CategorySeed {
         c("maint_trans", "MAINT", "Transmisión", "settings"),
         c("maint_ac", "MAINT", "Aire acondicionado", "ac_unit"),
         c("maint_general", "MAINT", "Servicio general", "build"),
-        // REPAIR
+        // REPAIR (Se quitó el rep_other)
         c("rep_motor", "REPAIR", "Motor", "settings_suggest"),
         c("rep_trans", "REPAIR", "Transmisión", "sync_alt"),
         c("rep_elec", "REPAIR", "Sistema eléctrico", "electrical_services"),
         c("rep_body", "REPAIR", "Carrocería", "directions_car"),
         c("rep_steer", "REPAIR", "Dirección", "rotate_right"),
-        c("rep_other", "REPAIR", "Otro", "build_circle"),
-        // OTHER
+        // OTHER (Se renombró other_misc)
         c("other_ins", "OTHER", "Seguro", "verified_user"),
         c("other_tax", "OTHER", "Impuestos", "receipt_long"),
         c("other_plates", "OTHER", "Placas", "badge"),
@@ -37,7 +36,7 @@ object CategorySeed {
         c("other_wash", "OTHER", "Lavado", "local_car_wash"),
         c("other_park", "OTHER", "Estacionamiento", "local_parking"),
         c("other_acc", "OTHER", "Accesorios", "shopping_bag"),
-        c("other_misc", "OTHER", "Otros", "more_horiz"),
+        c("other_misc", "OTHER", "Otro", "more_horiz"),
         // MOD
         c("mod_audio", "MOD", "Audio", "speaker"),
         c("mod_susp", "MOD", "Suspensión", "height"),

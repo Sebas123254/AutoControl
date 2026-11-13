@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +28,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.data.repository.CategoryRepository
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,7 +60,6 @@ class StatsViewModel @Inject constructor(
 
     val monthlyStats = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else expenseRepo.observeByVehicle(id).map { expenses ->
-            // Agrupamos por YearMonth para no mezclar años
             val formatter = DateTimeFormatter.ofPattern("MMM yy", Locale("es", "MX"))
             expenses.groupBy {
                 YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay))
@@ -100,9 +100,11 @@ class StatsViewModel @Inject constructor(
 @Composable
 fun StatsScreen(
     vehicleId: String,
-    onBack: () -> Unit,
+    vehicleName: String,
+    onOpenSettings: () -> Unit, // <-- NUEVO
     vm: StatsViewModel = hiltViewModel()
 ) {
+    val config = LocalAppConfig.current // <-- NUEVO
     LaunchedEffect(vehicleId) {
         vm.loadVehicle(vehicleId)
     }
@@ -113,10 +115,16 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.stats_title), fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.DirectionsCar, contentDescription = stringResource(R.string.vehicles_title))
+                title = {
+                    Column {
+                        Text(stringResource(R.string.stats_title), fontWeight = FontWeight.Bold)
+                        if (vehicleName.isNotBlank()) {
+                            Text(
+                                vehicleName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             )
@@ -133,14 +141,56 @@ fun StatsScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 item {
-                    Text(
-                        stringResource(R.string.stats_monthly_evolution),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.stats_monthly_evolution),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (!config.isPro) {
+                            Icon(Icons.Default.Star, contentDescription = "Pro", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                        }
+                    }
                     Spacer(Modifier.height(16.dp))
 
-                    if (monthlyStats.size >= 2) {
+                    if (!config.isPro) {
+                        // Bloqueo PRO
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = "Función exclusiva PRO",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Actualiza a PRO para ver la gráfica de evolución mensual de tus gastos.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                Button(onClick = onOpenSettings) {
+                                    Text("Ver opciones")
+                                }
+                            }
+                        }
+                    } else if (monthlyStats.size >= 2) {
                         CustomLineChart(monthlyStats, MaterialTheme.colorScheme.primary)
                     } else {
                         Card(
@@ -200,13 +250,12 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
     val minVal = data.minOfOrNull { it.totalCents }?.toFloat() ?: 0f
     val range = max(1f, maxVal - minVal)
 
-    // Color del texto adaptado al tema (oscuro/claro)
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp) // Aumentamos un poco la altura para que quepan las etiquetas
+            .height(240.dp)
             .padding(top = 16.dp, end = 16.dp, start = 16.dp, bottom = 32.dp)
     ) {
         if (data.isEmpty()) return@Canvas
@@ -238,12 +287,10 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
             style = Stroke(width = 6f, cap = StrokeCap.Round)
         )
 
-        // Dibujar puntos y etiquetas
         points.forEachIndexed { index, point ->
             drawCircle(color = lineColor, radius = 8f, center = point)
             drawCircle(color = Color.White, radius = 4f, center = point)
 
-            // Dibujar la etiqueta del mes (eje X)
             drawContext.canvas.nativeCanvas.drawText(
                 data[index].monthLabel,
                 point.x,

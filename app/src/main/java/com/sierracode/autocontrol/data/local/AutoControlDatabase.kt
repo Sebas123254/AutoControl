@@ -14,7 +14,7 @@ import com.sierracode.autocontrol.data.local.entity.*
         MaintenanceScheduleEntity::class, DocumentEntity::class,
         AttachmentEntity::class, ReminderEntity::class, GoalEntity::class
     ],
-    version = 4, // <-- SUBIMOS A 4
+    version = 5, // <-- SUBIMOS A 5
     exportSchema = true
 )
 abstract class AutoControlDatabase : RoomDatabase() {
@@ -27,7 +27,7 @@ abstract class AutoControlDatabase : RoomDatabase() {
     abstract fun documentDao(): DocumentDao
     abstract fun attachmentDao(): AttachmentDao
     abstract fun reminderDao(): ReminderDao
-    abstract fun goalDao(): GoalDao // <-- NUEVO
+    abstract fun goalDao(): GoalDao
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -53,7 +53,6 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
-// --- NUEVA MIGRACIÓN ---
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("""
@@ -67,5 +66,22 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
             )
         """.trimIndent())
         database.execSQL("CREATE INDEX IF NOT EXISTS `index_goals_vehicleId` ON `goals` (`vehicleId`)")
+    }
+}
+
+// NUEVA MIGRACIÓN 4 -> 5
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // 1. Mover gastos de 'rep_other' a 'other_misc'
+        database.execSQL("UPDATE expenses SET categoryId = 'other_misc' WHERE categoryId = 'rep_other'")
+
+        // 2. Borrar la categoría duplicada
+        database.execSQL("DELETE FROM categories WHERE id = 'rep_other'")
+
+        // 3. Renombrar 'other_misc' a 'Otro'
+        database.execSQL("UPDATE categories SET name = 'Otro' WHERE id = 'other_misc'")
+
+        // 4. Añadir la nueva columna
+        database.execSQL("ALTER TABLE expenses ADD COLUMN customCategoryName TEXT")
     }
 }

@@ -22,17 +22,21 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     buildFeatures {
         compose = true
     }
+
+    // Habilitar JUnit 5
     testOptions {
         unitTests.all {
             it.useJUnitPlatform()
@@ -77,7 +81,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // --- DEPENDENCIAS DE PRUEBAS (JUnit 5) ---
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
-    testImplementation("app.cash.turbine:turbine:1.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
 }

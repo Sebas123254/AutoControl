@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,9 +44,11 @@ import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.YearMonth
 import javax.inject.Inject
 import kotlin.math.roundToLong
 
@@ -55,7 +58,7 @@ class ExpenseEditViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val attachmentRepo: AttachmentRepository,
     private val goalRepo: GoalRepository,
-    private val settingsStore: SettingsStore, // <-- INYECTADO
+    private val settingsStore: SettingsStore,
     categoryRepo: CategoryRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -66,10 +69,16 @@ class ExpenseEditViewModel @Inject constructor(
     val categories = categoryRepo.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val currentMonthExpenses = expenseRepo.observeByVehicle(vehicleId).map { list ->
+        val currentMonth = YearMonth.now()
+        list.filter { YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay)) == currentMonth }.size
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     var amount by mutableStateOf("")
     var odometer by mutableStateOf("")
     var description by mutableStateOf("")
     var selectedCategory by mutableStateOf<CategoryEntity?>(null)
+    var customCategoryName by mutableStateOf("") // <-- NUEVO
     var selectedImageUri by mutableStateOf<Uri?>(null)
 
     var hasUnsavedChanges by mutableStateOf(false)
@@ -97,6 +106,7 @@ class ExpenseEditViewModel @Inject constructor(
                     } ?: ""
 
                     description = existingExpense.description ?: ""
+                    customCategoryName = existingExpense.customCategoryName ?: "" // <-- NUEVO
                     selectedCategory = catList.find { it.id == existingExpense.categoryId }
 
                     val oldAttachment = attachmentRepo.getForOwner("expense", expenseId)
@@ -136,7 +146,19 @@ class ExpenseEditViewModel @Inject constructor(
     fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true; error = null }
     fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
     fun updateDescription(newDesc: String) { description = newDesc; hasUnsavedChanges = true }
-    fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true; error = null }
+    fun updateCustomCategoryName(newName: String) {
+        customCategoryName = newName.take(40) // Cortar a 40 caracteres
+        hasUnsavedChanges = true
+        error = null
+    }
+    fun updateCategory(newCat: CategoryEntity) {
+        selectedCategory = newCat
+        if (newCat.id != "other_misc") {
+            customCategoryName = "" // Limpiar si cambia a otra categoría
+        }
+        hasUnsavedChanges = true
+        error = null
+    }
     fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
     fun clearWarning() { warningMessage = null }
 
@@ -155,6 +177,10 @@ class ExpenseEditViewModel @Inject constructor(
         }
         if (selectedCategory == null) {
             error = context.getString(R.string.expense_edit_err_category)
+            return
+        }
+        if (selectedCategory!!.id == "other_misc" && customCategoryName.isBlank()) {
+            error = context.getString(R.string.expense_custom_category_err)
             return
         }
 
@@ -176,7 +202,8 @@ class ExpenseEditViewModel @Inject constructor(
                     amountCents = amountCents,
                     dateEpochDay = existingExpense?.dateEpochDay ?: LocalDate.now().toEpochDay(),
                     odometer = odoKm,
-                    description = description.takeIf { it.isNotBlank() }
+                    description = description.takeIf { it.isNotBlank() },
+                    customCategoryName = customCategoryName.takeIf { it.isNotBlank() } // <-- NUEVO
                 )
 
                 var attachment: AttachmentEntity? = null
@@ -187,7 +214,9 @@ class ExpenseEditViewModel @Inject constructor(
                         val compressedUri = ImageUtils.compressAndSave(context, currentUri)
                         if (compressedUri != null) {
                             if (expenseId != null) {
-                                attachmentRepo.getForOwner("expense", expenseId)?.let { oldAtt ->
+                                val oldAtt = attachmentRepo.getForOwner("expense", expenseId)
+                                if (oldAtt != null) {
+                                    ImageUtils.deleteLocalFile(oldAtt.uri)
                                     attachmentRepo.deleteById(oldAtt.id)
                                 }
                             }
@@ -233,12 +262,15 @@ fun ExpenseEditScreen(
     expenseId: String?,
     goalId: String? = null,
     onDone: () -> Unit,
+    onOpenSettings: () -> Unit,
     vm: ExpenseEditViewModel = hiltViewModel()
 ) {
     val config = LocalAppConfig.current
     val categories by vm.categories.collectAsState()
+    val currentMonthExpenses by vm.currentMonthExpenses.collectAsState()
     var expanded by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showProLimitDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -273,6 +305,24 @@ fun ExpenseEditScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
+        )
+    }
+
+    if (showProLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showProLimitDialog = false },
+            icon = { Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
+            title = { Text("Límite alcanzado") },
+            text = { Text("Has alcanzado el límite de 50 gastos al mes en la versión gratuita.\n\nActualiza a PRO para registrar gastos ilimitados.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showProLimitDialog = false
+                    onOpenSettings()
+                }) { Text("Ver opciones") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showProLimitDialog = false }) { Text("Cancelar") }
             }
         )
     }
@@ -322,6 +372,27 @@ fun ExpenseEditScreen(
                         )
                     }
                 }
+            }
+
+            // NUEVO: Campo para "Otro"
+            if (vm.selectedCategory?.id == "other_misc") {
+                OutlinedTextField(
+                    value = vm.customCategoryName,
+                    onValueChange = { vm.updateCustomCategoryName(it) },
+                    label = { Text(stringResource(R.string.expense_custom_category_label)) },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                    isError = vm.error == context.getString(R.string.expense_custom_category_err),
+                    supportingText = {
+                        if (vm.error == context.getString(R.string.expense_custom_category_err)) {
+                            Text(context.getString(R.string.expense_custom_category_err))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             OutlinedTextField(
@@ -383,10 +454,20 @@ fun ExpenseEditScreen(
                 )
             }
 
-            vm.error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
+            vm.error?.let {
+                if (it != context.getString(R.string.expense_custom_category_err)) {
+                    Text(text = it, color = MaterialTheme.colorScheme.error)
+                }
+            }
 
             Button(
-                onClick = { vm.save(context, config.unitSystem, onDone) },
+                onClick = {
+                    if (expenseId == null && !config.isPro && currentMonthExpenses >= 50) {
+                        showProLimitDialog = true
+                    } else {
+                        vm.save(context, config.unitSystem, onDone)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {

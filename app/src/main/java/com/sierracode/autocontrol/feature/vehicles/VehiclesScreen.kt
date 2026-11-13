@@ -57,12 +57,6 @@ class VehiclesViewModel @Inject constructor(
         }
     }
 
-    suspend fun getActiveVehicleId(): String? {
-        val activeId = settings.activeVehicleId.first() ?: return null
-        val exists = vehicles.value.any { it.id == activeId }
-        return if (exists) activeId else null
-    }
-
     fun exportData(uri: Uri, context: android.content.Context, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             try {
@@ -91,26 +85,11 @@ fun VehiclesScreen(
     onVehicleClick: (String) -> Unit,
     onEditClick: (String) -> Unit,
     onOpenSettings: () -> Unit,
-    autoNavigateToLast: Boolean = true, // <-- NUEVO
-    onNavigated: () -> Unit = {}, // <-- NUEVO
     vm: VehiclesViewModel = hiltViewModel()
 ) {
     val vehicles by vm.vehicles.collectAsState()
     val isPro by vm.isPro.collectAsState()
     val context = LocalContext.current
-
-    // --- REDIRECCIÓN CONTROLADA ---
-    var hasRedirected by remember { mutableStateOf(false) }
-    LaunchedEffect(vehicles, autoNavigateToLast) {
-        if (autoNavigateToLast && !hasRedirected && vehicles.isNotEmpty()) {
-            val activeId = vm.getActiveVehicleId()
-            if (activeId != null) {
-                hasRedirected = true
-                onNavigated() // Le avisamos al NavHost que ya nos movimos
-                onVehicleClick(activeId)
-            }
-        }
-    }
 
     var showImportDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -247,7 +226,8 @@ fun VehiclesScreen(
                                 isSelectionMode = true
                                 selectedVehicles = setOf(vehicle.id)
                             }
-                        }
+                        },
+                        onEditClick = { onEditClick(vehicle.id) }
                     )
                 }
             }
@@ -262,7 +242,8 @@ fun VehicleCard(
     isSelectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onEditClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
@@ -286,6 +267,13 @@ fun VehicleCard(
             }
             if (isSelectionMode) {
                 Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+            } else {
+                IconButton(onClick = onEditClick) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.cd_edit_vehicle)
+                    )
+                }
             }
         }
     }

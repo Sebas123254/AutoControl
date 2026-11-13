@@ -7,20 +7,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
 import com.sierracode.autocontrol.data.repository.DocumentRepository
@@ -52,16 +53,17 @@ class DocumentsViewModel @Inject constructor(
         vehicleIdFlow.value = id
     }
 
-    fun deleteDocuments(ids: List<String>) = viewModelScope.launch { repo.deleteMultiple(ids) }
+    fun deleteDocument(id: String) = viewModelScope.launch { repo.delete(id) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentsScreen(
     vehicleId: String,
-    onBack: () -> Unit,
+    vehicleName: String,
     onAddClick: () -> Unit,
     onEditClick: (String) -> Unit,
+    onDocumentClick: (String) -> Unit, // <-- NUEVO
     vm: DocumentsViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) {
@@ -71,60 +73,43 @@ fun DocumentsScreen(
     val docs by vm.documents.collectAsState()
     val today = LocalDate.now().toEpochDay()
 
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var isSelectionMode by remember { mutableStateOf(false) }
-    var selectedDocs by remember { mutableStateOf(setOf<String>()) }
+    var docToDelete by remember { mutableStateOf<DocumentEntity?>(null) }
+    var docMenuTarget by remember { mutableStateOf<DocumentEntity?>(null) }
 
-    if (showDeleteDialog) {
+    if (docToDelete != null) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar ${selectedDocs.size} documento(s)") },
-            text = { Text("¿Estás seguro que deseas eliminar los documentos seleccionados?") },
+            onDismissRequest = { docToDelete = null },
+            title = { Text("Eliminar documento") },
+            text = { Text("¿Estás seguro que deseas eliminar '${docToDelete!!.name}'?") },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.deleteDocuments(selectedDocs.toList())
-                    isSelectionMode = false
-                    selectedDocs = emptySet()
-                    showDeleteDialog = false
+                    vm.deleteDocument(docToDelete!!.id)
+                    docToDelete = null
                 }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { docToDelete = null }) { Text("Cancelar") } }
         )
     }
 
     Scaffold(
         topBar = {
-            if (isSelectionMode) {
-                TopAppBar(
-                    title = { Text("${selectedDocs.size} seleccionados") },
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            isSelectionMode = false
-                            selectedDocs = emptySet()
-                        }) { Icon(Icons.Default.Close, "Cancelar") }
-                    },
-                    actions = {
-                        IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Default.Delete, "Borrar", tint = MaterialTheme.colorScheme.error)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                )
-            } else {
-                TopAppBar(
-                    title = { Text("Documentos") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.DirectionsCar, "Mis Vehículos")
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(stringResource(R.string.documents_title), fontWeight = FontWeight.Bold)
+                        if (vehicleName.isNotBlank()) {
+                            Text(
+                                vehicleName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-                )
-            }
+                }
+            )
         },
         floatingActionButton = {
-            if (!isSelectionMode) {
-                FloatingActionButton(onClick = onAddClick) { Icon(Icons.Default.Add, "Agregar") }
-            }
+            FloatingActionButton(onClick = onAddClick) { Icon(Icons.Default.Add, "Agregar") }
         }
     ) { padding ->
         if (docs.isEmpty()) {
@@ -140,7 +125,6 @@ fun DocumentsScreen(
                 items(docs, key = { it.id }) { doc ->
                     val expiry = doc.expiryDateEpochDay ?: today
                     val eval = evaluateDocument(expiry, today, doc.reminderLeadDays)
-                    val isSelected = selectedDocs.contains(doc.id)
 
                     val color = when(eval.status) {
                         DocumentStatus.EXPIRED -> Color(0xFFC0392B)
@@ -157,27 +141,36 @@ fun DocumentsScreen(
                         doc = doc,
                         color = color,
                         statusText = statusText,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = isSelected,
-                        onClick = {
-                            if (isSelectionMode) {
-                                val newSelection = if (isSelected) selectedDocs - doc.id else selectedDocs + doc.id
-                                selectedDocs = newSelection
-                                if (newSelection.isEmpty()) isSelectionMode = false
-                            } else {
-                                onEditClick(doc.id)
-                            }
-                        },
-                        onLongClick = {
-                            if (!isSelectionMode) {
-                                isSelectionMode = true
-                                selectedDocs = setOf(doc.id)
-                            }
-                        }
+                        onClick = { onDocumentClick(doc.id) }, // Navega al detalle
+                        onLongClick = { docMenuTarget = doc }  // Abre menú contextual
                     )
                 }
             }
         }
+    }
+
+    // Menú contextual de pulsación larga
+    if (docMenuTarget != null) {
+        AlertDialog(
+            onDismissRequest = { docMenuTarget = null },
+            title = { Text(docMenuTarget!!.name) },
+            text = { Text("¿Qué deseas hacer con este documento?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onEditClick(docMenuTarget!!.id)
+                    docMenuTarget = null
+                }) { Text("Editar") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        docToDelete = docMenuTarget
+                        docMenuTarget = null
+                    }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { docMenuTarget = null }) { Text("Cancelar") }
+                }
+            }
+        )
     }
 }
 
@@ -187,8 +180,6 @@ fun DocumentCard(
     doc: DocumentEntity,
     color: Color,
     statusText: String,
-    isSelectionMode: Boolean,
-    isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -196,9 +187,7 @@ fun DocumentCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Warning, contentDescription = null, tint = color)
@@ -208,14 +197,6 @@ fun DocumentCard(
                 Text(doc.name, fontWeight = FontWeight.Bold)
                 Text("Vence: ${formatDate(doc.expiryDateEpochDay)}", style = MaterialTheme.typography.bodySmall)
                 Text(statusText, color = color, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
-            }
-
-            if (isSelectionMode) {
-                // AQUÍ ESTÁ LA CORRECCIÓN: onCheckedChange en lugar de onClick
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onClick() }
-                )
             }
         }
     }
