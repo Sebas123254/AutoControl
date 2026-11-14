@@ -436,7 +436,6 @@ fun ExpenseEditScreen(
                 )
             }
 
-            // CAMBIO: CurrencyField para el monto
             CurrencyField(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
@@ -482,12 +481,12 @@ fun ExpenseEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // CORRECCIÓN: Quitamos keyboardActions que cerraban el foco al instante en la descripción.
             OutlinedTextField(
                 value = vm.description,
                 onValueChange = { vm.updateDescription(it) },
                 label = { Text(stringResource(R.string.expense_edit_desc)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                 modifier = Modifier.fillMaxWidth()
             )
 

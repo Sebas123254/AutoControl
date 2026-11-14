@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -231,16 +232,31 @@ fun DocumentEditScreen(
                 }
             }
 
-            // CAMBIO: Fecha expedición accesible (readOnly en lugar de enabled = false)
-            OutlinedTextField(
-                value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Fecha de Expedición (Opcional)") },
-                placeholder = { Text("Toca para elegir fecha") },
-                trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
-                modifier = Modifier.fillMaxWidth().clickable { showIssuePicker = true }
-            )
+            // CORRECCIÓN: Campo de fecha de expedición (Box overlay para clic)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = false,
+                    label = { Text("Fecha de Expedición (Opcional)") },
+                    placeholder = { Text("Toca para elegir fecha") },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable(role = Role.Button) { showIssuePicker = true }
+                )
+            }
 
             if (showIssuePicker) {
                 val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
@@ -257,16 +273,31 @@ fun DocumentEditScreen(
                 ) { DatePicker(state = state) }
             }
 
-            // CAMBIO: Fecha vencimiento accesible
-            OutlinedTextField(
-                value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Fecha de Vencimiento *") },
-                placeholder = { Text("Toca para elegir fecha") },
-                trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
-                modifier = Modifier.fillMaxWidth().clickable { showExpiryPicker = true }
-            )
+            // CORRECCIÓN: Campo de fecha de vencimiento (Box overlay para clic)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = false,
+                    label = { Text("Fecha de Vencimiento *") },
+                    placeholder = { Text("Toca para elegir fecha") },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable(role = Role.Button) { showExpiryPicker = true }
+                )
+            }
 
             if (showExpiryPicker) {
                 val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
