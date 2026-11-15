@@ -199,6 +199,10 @@ fun ExpensesScreen(
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    val blockedEditText = stringResource(R.string.expenses_blocked_edit_desc)
+    val selectedDesc = stringResource(R.string.expenses_tooltip_single)
+    val notSelectedDesc = stringResource(R.string.expenses_tooltip_none)
+
     BackHandler(enabled = vm.isSelectionMode) { vm.clearSelection() }
     BackHandler(enabled = vm.isSearchActive) { vm.updateSearchActive(false) }
 
@@ -206,10 +210,10 @@ fun ExpensesScreen(
         AlertDialog(
             onDismissRequest = { blockedEditMessage = null },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Edición no disponible aquí") },
+            title = { Text(stringResource(R.string.expenses_blocked_edit_title)) },
             text = { Text(blockedEditMessage!!) },
             confirmButton = {
-                TextButton(onClick = { blockedEditMessage = null }) { Text("Entendido") }
+                TextButton(onClick = { blockedEditMessage = null }) { Text(stringResource(R.string.action_understood)) }
             }
         )
     }
@@ -217,8 +221,8 @@ fun ExpensesScreen(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar ${vm.selectedIds.size} gasto(s)") },
-            text = { Text("Se eliminarán también sus recibos. Esta acción no se puede deshacer.") },
+            title = { Text(stringResource(R.string.expenses_delete_title)) },
+            text = { Text(stringResource(R.string.expenses_delete_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false
@@ -229,17 +233,17 @@ fun ExpensesScreen(
                     }
                 }, enabled = !vm.isDeleting) {
                     if (vm.isDeleting) CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                    else Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                    else Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
         )
     }
 
     if (showCategorySheet) {
         ModalBottomSheet(onDismissRequest = { showCategorySheet = false }) {
             Column(Modifier.padding(16.dp)) {
-                Text("Filtrar por categoría", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.filter_category_sheet_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(16.dp))
                 categories.forEach { cat ->
                     val isChecked = filterState.categoryIds.contains(cat.id)
@@ -257,7 +261,7 @@ fun ExpensesScreen(
                 }
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = { showCategorySheet = false }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Aplicar filtros")
+                    Text(stringResource(R.string.filter_apply))
                 }
             }
         }
@@ -274,9 +278,9 @@ fun ExpensesScreen(
                         vm.setCustomMonth(YearMonth.from(date))
                     }
                     showMonthPicker = false
-                }) { Text("Aceptar") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { showMonthPicker = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { showMonthPicker = false }) { Text(stringResource(R.string.action_cancel)) } }
         ) {
             DatePicker(state = state)
         }
@@ -287,20 +291,20 @@ fun ExpensesScreen(
         floatingActionButton = {
             if (!vm.isSelectionMode && !vm.isSearchActive) {
                 FloatingActionButton(onClick = onAddClick) {
-                    Icon(Icons.Default.Add, contentDescription = "Agregar Gasto")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.expenses_add))
                 }
             }
         },
         topBar = {
             if (vm.isSelectionMode) {
                 TopAppBar(
-                    title = { Text("${vm.selectedIds.size} seleccionados") },
+                    title = { Text(stringResource(R.string.expenses_selected_count, vm.selectedIds.size)) },
                     navigationIcon = {
-                        IconButton(onClick = { vm.clearSelection() }) { Icon(Icons.Default.Close, "Cancelar") }
+                        IconButton(onClick = { vm.clearSelection() }) { Icon(Icons.Default.Close, stringResource(R.string.expenses_cancel_selection)) }
                     },
                     actions = {
-                        IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.SelectAll, "Seleccionar todo") }
-                        IconButton(onClick = { showDeleteDialog = true }) { Icon(Icons.Default.Delete, "Borrar", tint = MaterialTheme.colorScheme.error) }
+                        IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.SelectAll, stringResource(R.string.expenses_select_all)) }
+                        IconButton(onClick = { showDeleteDialog = true }) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), tint = MaterialTheme.colorScheme.error) }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 )
@@ -310,7 +314,7 @@ fun ExpensesScreen(
                         TextField(
                             value = filterState.query,
                             onValueChange = { vm.setQuery(it) },
-                            placeholder = { Text("Buscar gasto...") },
+                            placeholder = { Text(stringResource(R.string.expenses_search_hint)) },
                             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -322,14 +326,14 @@ fun ExpensesScreen(
                             keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                             trailingIcon = {
                                 if (filterState.query.isNotEmpty()) {
-                                    IconButton(onClick = { vm.setQuery("") }) { Icon(Icons.Default.Clear, "Limpiar") }
+                                    IconButton(onClick = { vm.setQuery("") }) { Icon(Icons.Default.Clear, stringResource(R.string.action_clear)) }
                                 }
                             }
                         )
                         LaunchedEffect(Unit) { focusRequester.requestFocus() }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { vm.updateSearchActive(false) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cerrar búsqueda") }
+                        IconButton(onClick = { vm.updateSearchActive(false) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }
                     }
                 )
             } else {
@@ -343,7 +347,7 @@ fun ExpensesScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { vm.updateSearchActive(true) }) { Icon(Icons.Default.Search, "Buscar") }
+                        IconButton(onClick = { vm.updateSearchActive(true) }) { Icon(Icons.Default.Search, stringResource(R.string.action_search)) }
                     }
                 )
             }
@@ -358,21 +362,21 @@ fun ExpensesScreen(
                     FilterChip(
                         selected = filterState.period == ExpensePeriod.ALL && filterState.categoryIds.isEmpty() && filterState.query.isEmpty(),
                         onClick = { vm.clearFilters() },
-                        label = { Text("Todos") }
+                        label = { Text(stringResource(R.string.expenses_filter_all)) }
                     )
                 }
                 item {
                     FilterChip(
                         selected = filterState.period == ExpensePeriod.THIS_MONTH,
                         onClick = { vm.setPeriod(ExpensePeriod.THIS_MONTH) },
-                        label = { Text("Este mes") }
+                        label = { Text(stringResource(R.string.dashboard_period_this_month)) }
                     )
                 }
                 item {
                     FilterChip(
                         selected = filterState.period == ExpensePeriod.LAST_MONTH,
                         onClick = { vm.setPeriod(ExpensePeriod.LAST_MONTH) },
-                        label = { Text("Mes pasado") }
+                        label = { Text(stringResource(R.string.dashboard_period_last_month)) }
                     )
                 }
                 item {
@@ -380,7 +384,7 @@ fun ExpensesScreen(
                         selected = filterState.period == ExpensePeriod.CUSTOM,
                         onClick = { showMonthPicker = true },
                         label = {
-                            val text = filterState.customMonth?.let { it.format(DateTimeFormatter.ofPattern("MMM yy", Locale("es", "MX"))) } ?: "Elegir mes"
+                            val text = filterState.customMonth?.let { it.format(DateTimeFormatter.ofPattern("MMM yy", Locale.getDefault())) } ?: stringResource(R.string.filter_month_placeholder)
                             Text(text)
                         }
                     )
@@ -389,7 +393,7 @@ fun ExpensesScreen(
                     FilterChip(
                         selected = filterState.categoryIds.isNotEmpty(),
                         onClick = { showCategorySheet = true },
-                        label = { Text(if (filterState.categoryIds.isEmpty()) "Categorías" else "Categorías (${filterState.categoryIds.size})") }
+                        label = { Text(if (filterState.categoryIds.isEmpty()) stringResource(R.string.expenses_filter_categories) else stringResource(R.string.expenses_filter_categories_count, filterState.categoryIds.size)) }
                     )
                 }
             }
@@ -411,9 +415,9 @@ fun ExpensesScreen(
                 Box(Modifier.weight(1f).padding(16.dp), contentAlignment = Alignment.Center) {
                     EmptyStateCard(
                         icon = Icons.Default.Receipt,
-                        title = if (isFiltering) "Sin resultados" else stringResource(R.string.expenses_empty),
-                        description = if (isFiltering) "No encontramos gastos que coincidan con los filtros." else "Registra tu primer gasto para comenzar.",
-                        actionLabel = if (isFiltering) "Limpiar filtros" else "Registrar gasto",
+                        title = if (isFiltering) stringResource(R.string.expenses_empty_filter) else stringResource(R.string.expenses_empty),
+                        description = if (isFiltering) stringResource(R.string.expenses_empty_filter) else stringResource(R.string.expenses_empty),
+                        actionLabel = if (isFiltering) stringResource(R.string.expenses_filter_clear) else stringResource(R.string.expenses_add),
                         onActionClick = { if (isFiltering) vm.clearFilters() else onAddClick() }
                     )
                 }
@@ -433,13 +437,15 @@ fun ExpensesScreen(
                                 if (vm.isSelectionMode) {
                                     vm.toggleSelection(expense.id)
                                 } else if (expense.type == "FUEL" || expense.type == "MAINTENANCE") {
-                                    blockedEditMessage = "Para modificar esta carga o servicio, bórralo y vuelve a registrarlo desde su pantalla original (Gasolina o Mantenimiento)."
+                                    blockedEditMessage = blockedEditText
                                 } else {
                                     vm.selectExpense(expense)
                                     onEditClick(expense.id)
                                 }
                             },
-                            onLongClick = { vm.enterSelectionMode(expense.id) }
+                            onLongClick = { vm.enterSelectionMode(expense.id) },
+                            selectedDesc = selectedDesc,
+                            notSelectedDesc = notSelectedDesc
                         )
                     }
                 }
@@ -455,9 +461,11 @@ fun ExpenseRow(
     isSelectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    selectedDesc: String,
+    notSelectedDesc: String
 ) {
-    val semanticsModifier = if (isSelectionMode) Modifier.semantics { contentDescription = if (isSelected) "Seleccionado" else "No seleccionado" } else Modifier
+    val semanticsModifier = if (isSelectionMode) Modifier.semantics { contentDescription = if (isSelected) selectedDesc else notSelectedDesc } else Modifier
     val displayTitle = if (expense.customCategoryName != null) "Otro · ${expense.customCategoryName}" else expense.description ?: stringResource(R.string.expenses_default_name)
 
     Card(

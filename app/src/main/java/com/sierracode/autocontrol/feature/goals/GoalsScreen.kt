@@ -139,6 +139,19 @@ fun GoalsScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Traducimos los nombres de los filtros para usarlos en la UI
+    val filterAllLabel = stringResource(R.string.goals_filter_all, state.countAll)
+    val filterHighLabel = "${stringResource(R.string.priority_alta)} (${state.countHigh})"
+    val filterMediumLabel = "${stringResource(R.string.priority_media)} (${state.countMedium})"
+    val filterLowLabel = "${stringResource(R.string.priority_baja)} (${state.countLow})"
+
+    val currentFilterText = when (activeFilter) {
+        GoalFilter.ALL -> filterAllLabel
+        GoalFilter.HIGH -> stringResource(R.string.priority_alta)
+        GoalFilter.MEDIUM -> stringResource(R.string.priority_media)
+        GoalFilter.LOW -> stringResource(R.string.priority_baja)
+    }
+
     if (goalToDelete != null) {
         AlertDialog(
             onDismissRequest = { goalToDelete = null },
@@ -168,13 +181,13 @@ fun GoalsScreen(
                 actions = {
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Ordenar")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.goals_sort_title))
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                            DropdownMenuItem(text = { Text("Prioridad: alta → baja") }, onClick = { vm.setSort(GoalSort.PRIORITY_DESC); showSortMenu = false })
-                            DropdownMenuItem(text = { Text("Prioridad: baja → alta") }, onClick = { vm.setSort(GoalSort.PRIORITY_ASC); showSortMenu = false })
-                            DropdownMenuItem(text = { Text("Fecha objetivo") }, onClick = { vm.setSort(GoalSort.TARGET_DATE); showSortMenu = false })
-                            DropdownMenuItem(text = { Text("Monto estimado") }, onClick = { vm.setSort(GoalSort.AMOUNT_DESC); showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.goals_sort_priority_desc)) }, onClick = { vm.setSort(GoalSort.PRIORITY_DESC); showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.goals_sort_priority_asc)) }, onClick = { vm.setSort(GoalSort.PRIORITY_ASC); showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.goals_sort_date)) }, onClick = { vm.setSort(GoalSort.TARGET_DATE); showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.goals_sort_amount)) }, onClick = { vm.setSort(GoalSort.AMOUNT_DESC); showSortMenu = false })
                         }
                     }
                 }
@@ -190,19 +203,19 @@ fun GoalsScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item { FilterChip(selected = activeFilter == GoalFilter.ALL, onClick = { vm.setFilter(GoalFilter.ALL) }, label = { Text("Todas (${state.countAll})") }) }
-                item { FilterChip(selected = activeFilter == GoalFilter.HIGH, onClick = { vm.setFilter(GoalFilter.HIGH) }, label = { Text("Alta (${state.countHigh})") }) }
-                item { FilterChip(selected = activeFilter == GoalFilter.MEDIUM, onClick = { vm.setFilter(GoalFilter.MEDIUM) }, label = { Text("Media (${state.countMedium})") }) }
-                item { FilterChip(selected = activeFilter == GoalFilter.LOW, onClick = { vm.setFilter(GoalFilter.LOW) }, label = { Text("Baja (${state.countLow})") }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.ALL, onClick = { vm.setFilter(GoalFilter.ALL) }, label = { Text(filterAllLabel) }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.HIGH, onClick = { vm.setFilter(GoalFilter.HIGH) }, label = { Text(filterHighLabel) }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.MEDIUM, onClick = { vm.setFilter(GoalFilter.MEDIUM) }, label = { Text(filterMediumLabel) }) }
+                item { FilterChip(selected = activeFilter == GoalFilter.LOW, onClick = { vm.setFilter(GoalFilter.LOW) }, label = { Text(filterLowLabel) }) }
             }
 
             if (state.pendingGoals.isEmpty() && state.completedGoals.isEmpty()) {
                 Box(Modifier.weight(1f).padding(16.dp), contentAlignment = Alignment.Center) {
                     EmptyStateCard(
                         icon = Icons.Default.Flag,
-                        title = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_empty) else "No hay objetivos de prioridad ${activeFilter.name.lowercase()}",
-                        description = if (activeFilter == GoalFilter.ALL) "Toca el botón + para agregar algo." else "Prueba cambiando el filtro o agrega uno nuevo.",
-                        actionLabel = "Agregar objetivo",
+                        title = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_empty) else stringResource(R.string.goals_empty_priority, currentFilterText.lowercase()),
+                        description = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_empty_desc) else stringResource(R.string.goals_empty_priority_desc),
+                        actionLabel = stringResource(R.string.goals_add),
                         onActionClick = onAddClick
                     )
                 }
@@ -214,7 +227,7 @@ fun GoalsScreen(
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(
-                                text = if (activeFilter == GoalFilter.ALL) "Total estimado pendiente" else "Mostrando: ${activeFilter.name.lowercase()}",
+                                text = if (activeFilter == GoalFilter.ALL) stringResource(R.string.goals_total_pending) else stringResource(R.string.goals_filter_showing, currentFilterText.lowercase()),
                                 style = MaterialTheme.typography.labelLarge
                             )
                             if (totals.minTotal == totals.maxTotal) {
@@ -226,7 +239,7 @@ fun GoalsScreen(
                             if (activeFilter != GoalFilter.ALL && state.generalTotal != null) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "Total general pendiente: ${formatMoneyCents(state.generalTotal!!.minTotal)}",
+                                    text = stringResource(R.string.goals_general_total, formatMoneyCents(state.generalTotal!!.minTotal)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                 )

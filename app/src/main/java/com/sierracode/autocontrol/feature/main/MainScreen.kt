@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,6 +22,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import com.sierracode.autocontrol.feature.dashboard.DashboardScreen
 import com.sierracode.autocontrol.feature.documents.DocumentDetailScreen
@@ -45,12 +47,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
-sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
-    data object Dashboard : BottomNavItem("dashboard", Icons.Default.Home, "Inicio")
-    data object Expenses : BottomNavItem("expenses", Icons.Default.Receipt, "Gastos")
-    data object Goals : BottomNavItem("goals", Icons.Default.Flag, "Objetivos")
-    data object Stats : BottomNavItem("stats", Icons.Default.BarChart, "Stats")
-    data object Documents : BottomNavItem("documents", Icons.Default.Folder, "Docs")
+sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val labelResId: Int) {
+    data object Dashboard : BottomNavItem("dashboard", Icons.Default.Home, R.string.nav_dashboard)
+    data object Expenses : BottomNavItem("expenses", Icons.Default.Receipt, R.string.nav_expenses)
+    data object Goals : BottomNavItem("goals", Icons.Default.Flag, R.string.nav_goals)
+    data object Stats : BottomNavItem("stats", Icons.Default.BarChart, R.string.nav_stats)
+    data object Documents : BottomNavItem("documents", Icons.Default.Folder, R.string.nav_documents)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -93,7 +95,6 @@ fun MainScreen(
     val currentDestination = navBackStackEntry?.destination
     val currentRoute = currentDestination?.route
 
-    // Ocultar barra inferior en pantallas de detalle
     val showBottomBar = tabs.any { it.route == currentRoute }
 
     BackHandler(enabled = currentRoute == BottomNavItem.Dashboard.route) {
@@ -106,8 +107,8 @@ fun MainScreen(
                 NavigationBar {
                     tabs.forEach { item ->
                         NavigationBarItem(
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
+                            icon = { Icon(item.icon, contentDescription = stringResource(id = item.labelResId)) },
+                            label = { Text(stringResource(id = item.labelResId)) },
                             selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
                             onClick = {
                                 navController.navigate(item.route) {
@@ -180,7 +181,6 @@ fun MainScreen(
                 )
             }
 
-            // --- RUTAS INTERNAS (Sin Bottom Bar) ---
             composable(
                 "expense_edit?expenseId={expenseId}&goalId={goalId}",
                 arguments = listOf(navArgument("expenseId") { defaultValue = "" }, navArgument("goalId") { defaultValue = "" })

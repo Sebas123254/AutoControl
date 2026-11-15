@@ -95,22 +95,22 @@ class VehicleEditViewModel @Inject constructor(
         }
     }
 
-    fun save(onDone: () -> Unit) {
+    fun save(context: android.content.Context, onDone: () -> Unit) {
         if (brand.isBlank() || model.isBlank() || year.isBlank() || odometer.isBlank()) {
-            error = "Por favor llena los campos obligatorios"
+            error = context.getString(R.string.vehicles_err_required)
             return
         }
 
         val yearInt = year.toIntOrNull()
         val currentYear = LocalDate.now().year
         if (yearInt == null || yearInt < 1900 || yearInt > currentYear + 1) {
-            error = "El año debe estar entre 1900 y ${currentYear + 1}."
+            error = context.getString(R.string.vehicles_err_year, currentYear + 1)
             return
         }
 
         val priceDouble = purchasePrice.toDoubleOrNull()
         if (purchasePrice.isNotBlank() && (priceDouble == null || priceDouble < 0 || priceDouble > 10_000_000.0)) {
-            error = "El precio de compra debe ser válido y menor a 10 millones."
+            error = context.getString(R.string.vehicles_err_price)
             return
         }
 
@@ -137,7 +137,7 @@ class VehicleEditViewModel @Inject constructor(
                 hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
-                error = "Error al guardar: ${e.message}"
+                error = context.getString(R.string.vehicles_err_generic, e.message ?: "")
             } finally {
                 isLoading = false
             }
@@ -180,10 +180,10 @@ fun VehicleEditScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (vehicleId == null) "Nuevo Vehículo" else "Editar Vehículo") },
+                title = { Text(stringResource(if (vehicleId == null) R.string.vehicles_new_title else R.string.vehicles_edit_title)) },
                 navigationIcon = {
                     IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -196,7 +196,7 @@ fun VehicleEditScreen(
             OutlinedTextField(
                 value = vm.brand,
                 onValueChange = { vm.updateBrand(it) },
-                label = { Text("Marca (Ej. Volkswagen) *") },
+                label = { Text(stringResource(R.string.vehicles_brand_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
@@ -204,7 +204,7 @@ fun VehicleEditScreen(
             OutlinedTextField(
                 value = vm.model,
                 onValueChange = { vm.updateModel(it) },
-                label = { Text("Modelo (Ej. Vocho) *") },
+                label = { Text(stringResource(R.string.vehicles_model_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
@@ -212,7 +212,7 @@ fun VehicleEditScreen(
             OutlinedTextField(
                 value = vm.year,
                 onValueChange = { vm.updateYear(it) },
-                label = { Text("Año (Ej. 1998) *") },
+                label = { Text(stringResource(R.string.vehicles_year_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
@@ -220,31 +220,31 @@ fun VehicleEditScreen(
             OutlinedTextField(
                 value = vm.plates,
                 onValueChange = { vm.updatePlates(it) },
-                label = { Text("Placas (Opcional)") },
+                label = { Text(stringResource(R.string.vehicles_plates_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            Text("¿Cómo registrarás este vehículo? *", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.vehicles_how_to_label), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             ExposedDropdownMenuBox(
                 expanded = expandedUnits,
                 onExpandedChange = { if (!isEditing) expandedUnits = !expandedUnits }
             ) {
                 OutlinedTextField(
-                    value = if (vm.unitSystem == "METRIC") "Métrico (km, L)" else "Imperial (mi, gal)",
+                    value = if (vm.unitSystem == "METRIC") stringResource(R.string.settings_metric) else stringResource(R.string.settings_imperial),
                     onValueChange = {},
                     readOnly = true,
                     enabled = !isEditing,
-                    label = { Text("Sistema de unidades") },
+                    label = { Text(stringResource(R.string.vehicles_units_label)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedUnits) },
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
                 ExposedDropdownMenu(expanded = expandedUnits, onDismissRequest = { expandedUnits = false }) {
-                    DropdownMenuItem(text = { Text("Métrico (km, L)") }, onClick = { vm.updateUnits("METRIC"); expandedUnits = false })
-                    DropdownMenuItem(text = { Text("Imperial (mi, gal)") }, onClick = { vm.updateUnits("US"); expandedUnits = false })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.settings_metric)) }, onClick = { vm.updateUnits("METRIC"); expandedUnits = false })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.settings_imperial)) }, onClick = { vm.updateUnits("US"); expandedUnits = false })
                 }
             }
 
@@ -254,7 +254,7 @@ fun VehicleEditScreen(
                     onValueChange = {},
                     readOnly = true,
                     enabled = !isEditing,
-                    label = { Text("Divisa") },
+                    label = { Text(stringResource(R.string.vehicles_currency_label)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCurrency) },
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
@@ -270,18 +270,17 @@ fun VehicleEditScreen(
             OutlinedTextField(
                 value = vm.odometer,
                 onValueChange = { vm.updateOdometer(it) },
-                label = { Text("Odómetro actual *") },
+                label = { Text(stringResource(R.string.vehicles_odometer_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 suffix = { Text(if (vm.unitSystem == "METRIC") "km" else "mi") },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // CAMBIO: Usamos CurrencyField
             CurrencyField(
                 value = vm.purchasePrice,
                 onValueChange = { vm.updatePurchasePrice(it) },
-                label = "Precio original o de compra (Opcional)",
+                label = stringResource(R.string.vehicles_price_label),
                 currencyCode = vm.currencyCode,
                 imeAction = ImeAction.Done,
                 onImeAction = { focusManager.clearFocus() },
@@ -292,8 +291,8 @@ fun VehicleEditScreen(
 
             Button(
                 onClick = {
-                    vm.save {
-                        Toast.makeText(context, "Vehículo guardado correctamente", Toast.LENGTH_SHORT).show()
+                    vm.save(context) {
+                        Toast.makeText(context, context.getString(R.string.vehicles_saved_toast), Toast.LENGTH_SHORT).show()
                         onDone()
                     }
                 },
@@ -301,7 +300,7 @@ fun VehicleEditScreen(
                 enabled = !vm.isLoading
             ) {
                 if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
-                else Text("Guardar Vehículo")
+                else Text(stringResource(R.string.vehicles_save_btn))
             }
         }
     }

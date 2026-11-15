@@ -24,7 +24,6 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -95,22 +94,22 @@ class DocumentEditViewModel @Inject constructor(
 
     fun save(context: android.content.Context, onDone: () -> Unit) {
         if (name.isBlank() || expiryDate == null) {
-            error = "Nombre y fecha de vencimiento son obligatorios"
+            error = context.getString(R.string.doc_edit_err_required)
             return
         }
         if (type.isBlank()) {
-            error = "Selecciona un tipo de documento"
+            error = context.getString(R.string.doc_edit_err_type)
             return
         }
 
         val leadDaysInt = leadDays.toIntOrNull() ?: 30
         if (leadDaysInt < 1 || leadDaysInt > 90) {
-            error = "Los días de aviso deben estar entre 1 y 90."
+            error = context.getString(R.string.doc_edit_err_days)
             return
         }
 
         if (issueDate != null && expiryDate!!.isBefore(issueDate)) {
-            error = "La fecha de vencimiento no puede ser menor a la de expedición."
+            error = context.getString(R.string.doc_edit_err_date)
             return
         }
 
@@ -145,7 +144,7 @@ class DocumentEditViewModel @Inject constructor(
                 hasUnsavedChanges = false
                 onDone()
             } catch (e: Exception) {
-                error = "Error: ${e.message}"
+                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
             } finally {
                 isLoading = false
             }
@@ -193,10 +192,10 @@ fun DocumentEditScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Documento") },
+                title = { Text(stringResource(R.string.doc_edit_title)) },
                 navigationIcon = {
                     IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
                     }
                 }
             )
@@ -209,7 +208,7 @@ fun DocumentEditScreen(
             OutlinedTextField(
                 value = vm.name,
                 onValueChange = { vm.updateName(it) },
-                label = { Text("Nombre (Ej. Póliza GNP) *") },
+                label = { Text(stringResource(R.string.doc_edit_name_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
@@ -220,28 +219,35 @@ fun DocumentEditScreen(
                     value = if (vm.type.isBlank()) "" else vm.type,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Tipo de documento *") },
-                    placeholder = { Text("Selecciona un tipo") },
+                    label = { Text(stringResource(R.string.doc_edit_type_label)) },
+                    placeholder = { Text(stringResource(R.string.doc_edit_type_placeholder)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedType) },
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
                 ExposedDropdownMenu(expanded = expandedType, onDismissRequest = { expandedType = false }) {
-                    listOf("SEGURO", "CIRCULACION", "VERIFICACION", "FACTURA", "OTRO").forEach { t ->
-                        DropdownMenuItem(text = { Text(t) }, onClick = { vm.updateType(t); expandedType = false })
+                    val types = listOf(
+                        "SEGURO" to stringResource(R.string.doc_type_insurance),
+                        "CIRCULACION" to stringResource(R.string.doc_type_circulation),
+                        "VERIFICACION" to stringResource(R.string.doc_type_verification),
+                        "FACTURA" to stringResource(R.string.doc_type_invoice),
+                        "OTRO" to stringResource(R.string.doc_type_other)
+                    )
+                    types.forEach { (id, label) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = { vm.updateType(id); expandedType = false })
                     }
                 }
             }
 
-            // CORRECCIÓN: Campo de fecha de expedición (Box overlay para clic)
+            // Fecha Expedición
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
-                    label = { Text("Fecha de Expedición (Opcional)") },
-                    placeholder = { Text("Toca para elegir fecha") },
-                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                    label = { Text(stringResource(R.string.doc_edit_issue_date_label)) },
+                    placeholder = { Text(stringResource(R.string.doc_edit_date_placeholder)) },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.action_choose_date)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         disabledTextColor = MaterialTheme.colorScheme.onSurface,
                         disabledBorderColor = MaterialTheme.colorScheme.outline,
@@ -251,11 +257,7 @@ fun DocumentEditScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(role = Role.Button) { showIssuePicker = true }
-                )
+                Box(modifier = Modifier.matchParentSize().clickable { showIssuePicker = true })
             }
 
             if (showIssuePicker) {
@@ -267,22 +269,22 @@ fun DocumentEditScreen(
                         TextButton(onClick = {
                             state.selectedDateMillis?.let { vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
                             showIssuePicker = false
-                        }) { Text("Aceptar") }
+                        }) { Text(stringResource(R.string.action_ok)) }
                     },
-                    dismissButton = { TextButton(onClick = { showIssuePicker = false }) { Text("Cancelar") } }
+                    dismissButton = { TextButton(onClick = { showIssuePicker = false }) { Text(stringResource(R.string.action_cancel)) } }
                 ) { DatePicker(state = state) }
             }
 
-            // CORRECCIÓN: Campo de fecha de vencimiento (Box overlay para clic)
+            // Fecha Vencimiento
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
-                    label = { Text("Fecha de Vencimiento *") },
-                    placeholder = { Text("Toca para elegir fecha") },
-                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir") },
+                    label = { Text(stringResource(R.string.doc_edit_expiry_date_label)) },
+                    placeholder = { Text(stringResource(R.string.doc_edit_date_placeholder)) },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.action_choose_date)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         disabledTextColor = MaterialTheme.colorScheme.onSurface,
                         disabledBorderColor = MaterialTheme.colorScheme.outline,
@@ -292,11 +294,7 @@ fun DocumentEditScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(role = Role.Button) { showExpiryPicker = true }
-                )
+                Box(modifier = Modifier.matchParentSize().clickable { showExpiryPicker = true })
             }
 
             if (showExpiryPicker) {
@@ -308,16 +306,16 @@ fun DocumentEditScreen(
                         TextButton(onClick = {
                             state.selectedDateMillis?.let { vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
                             showExpiryPicker = false
-                        }) { Text("Aceptar") }
+                        }) { Text(stringResource(R.string.action_ok)) }
                     },
-                    dismissButton = { TextButton(onClick = { showExpiryPicker = false }) { Text("Cancelar") } }
+                    dismissButton = { TextButton(onClick = { showExpiryPicker = false }) { Text(stringResource(R.string.action_cancel)) } }
                 ) { DatePicker(state = state) }
             }
 
             OutlinedTextField(
                 value = vm.leadDays,
                 onValueChange = { vm.updateLeadDays(it) },
-                label = { Text("Días de anticipación para avisar (1-90)") },
+                label = { Text(stringResource(R.string.doc_edit_lead_days_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
@@ -329,17 +327,20 @@ fun DocumentEditScreen(
             ) {
                 Icon(Icons.Default.AttachFile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (vm.selectedFileUri != null || vm.existingFileUri != null) "Cambiar archivo adjunto" else "Adjuntar archivo (Opcional)")
+                Text(
+                    if (vm.selectedFileUri != null || vm.existingFileUri != null) stringResource(R.string.doc_edit_change_file)
+                    else stringResource(R.string.doc_edit_attach_file)
+                )
             }
 
             if (vm.selectedFileUri != null || vm.existingFileUri != null) {
-                Text("Archivo seleccionado", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.doc_edit_file_selected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
 
             OutlinedTextField(
                 value = vm.notes,
                 onValueChange = { vm.updateNotes(it) },
-                label = { Text("Notas (Opcional)") },
+                label = { Text(stringResource(R.string.field_notes)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier.fillMaxWidth()
@@ -358,7 +359,7 @@ fun DocumentEditScreen(
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp)) else Text("Guardar")
+                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp)) else Text(stringResource(R.string.action_save))
             }
         }
     }

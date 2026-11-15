@@ -1,24 +1,82 @@
 <resources>
     <string name="app_name">AutoControl</string>
 
-    <!-- General -->
+    <!-- General y Acciones -->
     <string name="action_back">Atrás</string>
     <string name="action_cancel">Cancelar</string>
     <string name="action_close">Cerrar</string>
     <string name="action_edit">Editar</string>
     <string name="action_delete">Eliminar</string>
-    <string name="action_yes_restore">Sí, restaurar</string>
-    <string name="action_understood">Entendido</string>
+    <string name="action_save">Guardar</string>
     <string name="action_share">Compartir</string>
-    <string name="action_delete_plural">Eliminar seleccionados</string>
-    <string name="cd_back_to_vehicles">Volver a Mis vehículos</string>
-    <string name="cd_edit_vehicle">Editar vehículo</string>
-    <string name="cd_switch_vehicle">Cambiar de vehículo</string>
-    <string name="cd_more_options">Más opciones</string>
-    <string name="documents_title">Documentos</string>
+    <string name="action_undo">Deshacer</string>
+    <string name="action_confirm">Confirmar</string>
+    <string name="action_ok">Aceptar</string>
+    <string name="action_yes">Sí</string>
+    <string name="action_understood">Entendido</string>
+    <string name="action_yes_restore">Sí, restaurar</string>
+    <string name="action_search">Buscar</string>
+    <string name="action_clear">Limpiar</string>
+    <string name="action_choose_date">Elegir fecha</string>
+    <string name="action_discard">Descartar</string>
+    <string name="action_keep_editing">Seguir editando</string>
+
+    <!-- Navegación -->
+    <string name="nav_dashboard">Inicio</string>
+    <string name="nav_expenses">Gastos</string>
+    <string name="nav_goals">Objetivos</string>
+    <string name="nav_stats">Stats</string>
+    <string name="nav_documents">Docs</string>
+
+    <!-- Categorías (Base de datos) -->
+    <string name="cat_fuel_gas">Gasolina</string>
+    <string name="cat_fuel_diesel">Diésel</string>
+    <string name="cat_fuel_gas_lp">Gas LP</string>
+    <string name="cat_fuel_ev">Carga eléctrica</string>
+    <string name="cat_maint_oil">Aceite</string>
+    <string name="cat_maint_filters">Filtros</string>
+    <string name="cat_maint_brakes">Frenos</string>
+    <string name="cat_maint_susp">Suspensión</string>
+    <string name="cat_maint_align">Alineación</string>
+    <string name="cat_maint_balance">Balanceo</string>
+    <string name="cat_maint_coolant">Refrigerante</string>
+    <string name="cat_maint_battery">Batería</string>
+    <string name="cat_maint_spark">Bujías</string>
+    <string name="cat_maint_trans">Transmisión</string>
+    <string name="cat_maint_ac">Aire acondicionado</string>
+    <string name="cat_maint_general">Servicio general</string>
+    <string name="cat_rep_motor">Motor</string>
+    <string name="cat_rep_trans">Transmisión</string>
+    <string name="cat_rep_elec">Sistema eléctrico</string>
+    <string name="cat_rep_body">Carrocería</string>
+    <string name="cat_rep_steer">Dirección</string>
+    <string name="cat_other_ins">Seguro</string>
+    <string name="cat_other_tax">Impuestos</string>
+    <string name="cat_other_plates">Placas</string>
+    <string name="cat_other_verif">Verificación</string>
+    <string name="cat_other_wash">Lavado</string>
+    <string name="cat_other_park">Estacionamiento</string>
+    <string name="cat_other_acc">Accesorios</string>
+    <string name="cat_other_misc">Otro</string>
+    <string name="cat_mod_audio">Audio</string>
+    <string name="cat_mod_susp">Suspensión</string>
+    <string name="cat_mod_exhaust">Escape</string>
+    <string name="cat_mod_light">Iluminación</string>
+    <string name="cat_mod_style">Estética</string>
+    <string name="cat_mod_perf">Performance</string>
+    <string name="cat_mod_interior">Interior</string>
+    <string name="cat_mod_wheels">Rines/Llantas</string>
+    <string name="cat_mod_other">Otras modificaciones</string>
+
+    <!-- Prioridades -->
+    <string name="priority_alta">Prioridad Alta</string>
+    <string name="priority_media">Prioridad Media</string>
+    <string name="priority_baja">Prioridad Baja</string>
 
     <!-- Vehículos -->
     <string name="vehicles_title">Mis vehículos</string>
+    <string name="vehicles_new_title">Nuevo Vehículo</string>
+    <string name="vehicles_edit_title">Editar Vehículo</string>
     <string name="vehicles_empty_title">Aún no tienes vehículos</string>
     <string name="vehicles_empty_subtitle">Agrega tu primer auto para empezar.</string>
     <string name="vehicles_add_first">Agregar mi primer auto</string>
@@ -29,74 +87,120 @@
     <string name="vehicles_delete_desc">¿Estás seguro? Se borrarán también TODOS sus gastos y mantenimientos asociados.</string>
     <string name="vehicles_restore_title">Restaurar Respaldo</string>
     <string name="vehicles_restore_desc">¿Estás seguro? Esto borrará todos los datos actuales y los reemplazará por los del archivo.</string>
+    <string name="vehicles_selected">%1$d seleccionados</string>
+    <string name="vehicles_cancel_selection">Cancelar selección</string>
+    <string name="vehicles_brand_label">Marca (Ej. Volkswagen) *</string>
+    <string name="vehicles_model_label">Modelo (Ej. Vocho) *</string>
+    <string name="vehicles_year_label">Año (Ej. 1998) *</string>
+    <string name="vehicles_plates_label">Placas (Opcional)</string>
+    <string name="vehicles_how_to_label">¿Cómo registrarás este vehículo? *</string>
+    <string name="vehicles_units_label">Sistema de unidades</string>
+    <string name="vehicles_currency_label">Divisa</string>
+    <string name="vehicles_odometer_label">Odómetro actual *</string>
+    <string name="vehicles_price_label">Precio original o de compra (Opcional)</string>
+    <string name="vehicles_save_btn">Guardar Vehículo</string>
+    <string name="vehicles_saved_toast">Vehículo guardado correctamente</string>
+    <string name="vehicles_err_required">Por favor llena los campos obligatorios</string>
+    <string name="vehicles_err_year">El año debe estar entre 1900 y %1$d.</string>
+    <string name="vehicles_err_price">El precio de compra debe ser válido y menor a 10 millones.</string>
+    <string name="vehicles_err_generic">Error al guardar: %1$s</string>
     <string name="vehicles_cd_import">Importar</string>
     <string name="vehicles_cd_export">Exportar</string>
     <string name="vehicles_cd_settings">Ajustes</string>
     <string name="vehicles_cd_add">Agregar Vehículo</string>
-    <string name="vehicles_selected">%1$d seleccionados</string>
-    <string name="vehicles_cancel_selection">Cancelar selección</string>
+    <string name="vehicles_delete_maint_title">Eliminar mantenimiento</string>
+    <string name="vehicles_delete_maint_desc">¿Deseas eliminar la programación de \'%1$s\'? El historial de gastos no se borrará.</string>
+    <string name="vehicles_delete_maint_snackbar">Mantenimiento \'%1$s\' eliminado</string>
+    <string name="vehicles_maint_scheduled">Mantenimientos programados</string>
+    <string name="vehicles_maint_updated">Mantenimiento actualizado</string>
+    <string name="vehicles_edit_maint_title">Editar: %1$s</string>
+    <string name="vehicles_maint_interval_km">Intervalo en kilómetros (Opcional)</string>
+    <string name="vehicles_maint_interval_months">Intervalo en meses (Opcional)</string>
+    <string name="vehicles_maint_remind_km">Avisar antes de (km)</string>
+    <string name="vehicles_maint_remind_days">Avisar antes de (días)</string>
+    <string name="vehicles_maint_err_interval">Los intervalos deben ser mayores a 0.</string>
+    <string name="vehicles_maint_err_negative">Los avisos no pueden ser negativos.</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">Inicio</string>
-    <string name="dashboard_scheduled">Mantenimientos Programados</string>
-    <string name="dashboard_status_overdue">🔴 VENCIDO</string>
-    <string name="dashboard_status_soon">🟡 PRÓXIMO</string>
-    <string name="dashboard_status_ok">🟢 AL DÍA</string>
-    <string name="dashboard_status_unknown">⚪ SIN DATOS</string>
-    <string name="dashboard_remaining_km">Faltan %1$s</string>
-    <string name="dashboard_mileage">Odómetro</string>
-    <string name="dashboard_total_spent">Gastado total</string>
-    <string name="dashboard_no_expenses">Aún sin gastos</string>
-    <string name="dashboard_real_cost">Costo Real del Auto</string>
-    <string name="dashboard_cost_per_km">Costo por distancia:</string>
-    <string name="dashboard_cost_per_month">Costo por mes:</string>
-    <string name="dashboard_avg_performance">Rendimiento</string>
+    <string name="dashboard_period_this_month">Este mes</string>
+    <string name="dashboard_period_last_month">Mes pasado</string>
+    <string name="dashboard_period_this_year">Este año</string>
+    <string name="dashboard_period_all_time">Histórico</string>
+    <string name="dashboard_total_cost">Costo total acumulado (histórico)</string>
+    <string name="dashboard_purchase_price">Precio de compra: %1$s</string>
+    <string name="dashboard_cost_per_km">Costo por km histórico</string>
+    <string name="dashboard_no_km_data">Necesitas 2 gastos con kilometraje</string>
+    <string name="dashboard_performance">Rendimiento</string>
+    <string name="dashboard_performance_avg">Promedio histórico</string>
+    <string name="dashboard_action_fuel">Gasolina</string>
+    <string name="dashboard_action_expense">Gasto</string>
+    <string name="dashboard_action_maint">Mantenimiento</string>
+    <string name="dashboard_register_fuel">Registrar carga</string>
+    <string name="dashboard_add_price">Agregar precio</string>
+    <string name="dashboard_price_missing">Precio de compra no registrado</string>
+    <string name="dashboard_price_desc">Agrega el precio original para conocer el costo total acumulado del vehículo.</string>
     <string name="dashboard_no_data">Sin datos suficientes</string>
-    <string name="dashboard_full_tank_hint">Registra al menos 2 cargas de tanque lleno.</string>
-    <string name="dashboard_quick_actions">Acciones rápidas</string>
-    <string name="dashboard_action_fuel">⛽ Gasolina</string>
-    <string name="dashboard_action_maint">🔧 Mantenimiento</string>
-    <string name="dashboard_action_reminders">Ver Recordatorios</string>
-    <string name="dashboard_action_expense">Registrar Gasto</string>
+    <string name="dashboard_next_maint">Próximo mantenimiento</string>
+    <string name="dashboard_view_all">Ver todos</string>
+    <string name="dashboard_maint_fuel_hint">Registra tu primera carga de gasolina.</string>
+    <string name="dashboard_maint_odo_hint">Falta el odómetro en algunas cargas.</string>
+    <string name="dashboard_maint_full_hint">Necesitas al menos 2 cargas de \'Tanque lleno\'.</string>
+    <string name="dashboard_maint_consecutive_hint">Asegúrate de que las cargas con tanque lleno sean consecutivas.</string>
+    <string name="dashboard_maint_card_faltan">Faltan %1$s · a los %2$s</string>
 
-    <!-- Gastos (Lista) -->
+    <!-- Gastos -->
     <string name="expenses_title">Historial de Gastos</string>
     <string name="expenses_empty">No hay gastos registrados aún.</string>
-    <string name="expenses_detail_title">Detalle del gasto</string>
-    <string name="expenses_amount">Monto: %1$s</string>
-    <string name="expenses_date">Fecha: %1$s</string>
-    <string name="expenses_odometer">Kilometraje: %1$d km</string>
-    <string name="expenses_receipt_zoom">Recibo adjunto (toca para ampliar):</string>
-    <string name="expenses_no_receipt">Sin recibo adjunto</string>
-    <string name="expenses_amplify">Ampliar</string>
-    <string name="expenses_full_screen">Recibo a pantalla completa</string>
+    <string name="expenses_empty_filter">No encontramos gastos que coincidan con los filtros.</string>
+    <string name="expenses_search_hint">Buscar gasto...</string>
+    <string name="expenses_add">Agregar Gasto</string>
+    <string name="expenses_filter_all">Todos</string>
+    <string name="expenses_filter_categories">Categorías</string>
+    <string name="expenses_filter_categories_count">Categorías (%1$d)</string>
+    <string name="expenses_filter_clear">Limpiar filtros</string>
     <string name="expenses_default_name">Gasto</string>
-    <string name="expenses_share_title">Compartir recibo</string>
-    <string name="expenses_selected">%1$d seleccionados</string>
-    <string name="expenses_select_all">Seleccionar todo</string>
-    <string name="expenses_delete_title">Eliminar %1$d gasto(s)</string>
-    <string name="expenses_delete_desc">Se eliminarán también sus recibos y detalles asociados. Esta acción no se puede deshacer.</string>
+    <string name="expenses_delete_title">Eliminar gastos</string>
+    <string name="expenses_delete_desc">Se eliminarán también sus recibos. Esta acción no se puede deshacer.</string>
     <string name="expenses_deleted_success">%1$d gasto(s) eliminado(s)</string>
-    <string name="expenses_delete_error">Error al eliminar los gastos</string>
     <string name="expenses_cancel_selection">Cancelar selección</string>
+    <string name="expenses_select_all">Seleccionar todo</string>
+    <string name="expenses_selected_count">%1$d seleccionados</string>
+    <string name="expenses_blocked_edit_title">Edición no disponible aquí</string>
+    <string name="expenses_blocked_edit_desc">Para modificar esta carga o servicio, bórralo y vuelve a registrarlo desde su pantalla original (Gasolina o Mantenimiento).</string>
+    <string name="expenses_full_screen">Recibo a pantalla completa</string>
+    <string name="expenses_share_title">Compartir recibo</string>
+    <string name="expenses_tooltip_single">Seleccionado</string>
+    <string name="expenses_tooltip_none">No seleccionado</string>
+    <string name="filter_category_sheet_title">Filtrar por categoría</string>
+    <string name="filter_apply">Aplicar filtros</string>
+    <string name="filter_month_placeholder">Elegir mes</string>
 
     <!-- Editar Gasto -->
     <string name="expense_edit_new">Registrar Gasto</string>
     <string name="expense_edit_update">Editar Gasto</string>
+    <string name="expense_edit_amount">Monto total *</string>
+    <string name="expense_edit_date">Fecha del gasto *</string>
     <string name="expense_edit_category">Categoría *</string>
     <string name="expense_edit_select_category">Selecciona categoría</string>
-    <string name="expense_edit_amount">Monto total *</string>
     <string name="expense_edit_odometer">Odómetro (Opcional)</string>
     <string name="expense_edit_desc">Descripción (Ej. Cambio de aceite)</string>
-    <string name="expense_edit_receipt">Adjuntar recibo (Opcional)</string>
-    <string name="expense_edit_receipt_change">Cambiar recibo</string>
     <string name="expense_edit_save">Guardar Gasto</string>
+    <string name="expense_edit_receipt_desc">Recibo</string>
+    <string name="expense_edit_delete_photo">Eliminar foto</string>
+    <string name="expense_edit_camera">Tomar Foto</string>
+    <string name="expense_edit_retake">Repetir Foto</string>
+    <string name="expense_edit_gallery">Galería</string>
+    <string name="expense_edit_limit_title">Límite alcanzado</string>
+    <string name="expense_edit_limit_desc">Has alcanzado el límite de 50 gastos al mes en la versión gratuita.\n\nActualiza a PRO para registrar gastos ilimitados.</string>
+    <string name="expense_edit_limit_button">Ver opciones</string>
+    <string name="expense_edit_err_high">El monto excede el límite permitido.</string>
+    <string name="expense_custom_category_label">¿Qué fue este gasto? *</string>
+    <string name="expense_custom_category_err">Escribe un nombre para el gasto</string>
+    <string name="expense_amount_err">El monto debe ser mayor a 0</string>
     <string name="expense_edit_err_amount">Ingresa un monto válido</string>
     <string name="expense_edit_err_category">Selecciona una categoría</string>
     <string name="expense_edit_err_generic">Error al guardar: %1$s</string>
-    <string name="expense_edit_receipt_desc">Recibo</string>
-    <string name="expense_custom_category_label">¿Qué fue este gasto? *</string>
-    <string name="expense_custom_category_err">Escribe un nombre para el gasto</string>
 
     <!-- Gasolina -->
     <string name="fuel_edit_title">Registrar Gasolina</string>
@@ -114,6 +218,7 @@
     <string name="fuel_edit_err_valid">Ingresa litros y total válidos</string>
     <string name="fuel_edit_err_type">Selecciona el tipo de combustible</string>
     <string name="fuel_edit_desc">Carga de %1$s</string>
+    <string name="fuel_edit_fecha_carga">Fecha de la carga *</string>
 
     <!-- Mantenimiento -->
     <string name="maint_edit_title">Registrar Mantenimiento</string>
@@ -126,16 +231,22 @@
     <string name="maint_edit_receipt_change">Cambiar factura</string>
     <string name="maint_edit_save">Guardar Mantenimiento</string>
     <string name="maint_edit_err_valid">Selecciona una categoría e ingresa un monto válido</string>
+    <string name="maint_edit_err_odo">El próximo servicio debe ser mayor al odómetro actual.</string>
+    <string name="maint_edit_fecha_servicio">Fecha del servicio *</string>
 
     <!-- Estadísticas -->
     <string name="stats_title">Estadísticas</string>
     <string name="stats_empty">Registra gastos para ver estadísticas.</string>
+    <string name="stats_empty_desc">Registra tu primer gasto para empezar a ver estadísticas de tu vehículo.</string>
+    <string name="stats_go_to_expenses">Ir a Gastos</string>
     <string name="stats_monthly_evolution">Evolución Mensual</string>
     <string name="stats_not_enough_history">Aún no hay suficiente historial</string>
     <string name="stats_history_hint">Registra gastos en al menos 2 meses diferentes para ver la gráfica de evolución.</string>
     <string name="stats_category_distribution">Distribución por Categoría</string>
     <string name="stats_percent_total">%.1f%% del total</string>
     <string name="stats_others">Otros</string>
+    <string name="stats_chart_desc">Gráfica de evolución mensual. </string>
+    <string name="stats_tooltip_tap">Toca la gráfica para ver los montos</string>
 
     <!-- Recordatorios -->
     <string name="reminders_title">Recordatorios</string>
@@ -144,6 +255,9 @@
     <string name="reminders_delete_title">Eliminar recordatorio</string>
     <string name="reminders_delete_desc">¿Estás seguro que deseas eliminar este recordatorio?</string>
     <string name="reminders_notice">Aviso: %1$s</string>
+    <string name="reminders_snooze">Posponer</string>
+    <string name="reminders_snooze_1d">Posponer 1 día</string>
+    <string name="reminders_snooze_1w">Posponer 1 semana</string>
 
     <!-- Ajustes -->
     <string name="settings_title">Ajustes</string>
@@ -162,12 +276,30 @@
     <string name="settings_privacy_desc">Toda tu información se guarda localmente en tu celular. No enviamos nada a internet. Puedes respaldarla en cualquier momento desde la pantalla de vehículos.</string>
     <string name="settings_dev">SierraCode</string>
     <string name="settings_version">Versión %1$s</string>
+    <string name="settings_region_units">Región y Unidades</string>
+    <string name="settings_region_desc">Valores predeterminados para autos nuevos. Si hay un auto activo, se aplicará a él.</string>
+    <string name="settings_currency">Divisa</string>
+    <string name="settings_units">Sistema de unidades</string>
+    <string name="settings_metric">Métrico (km/L)</string>
+    <string name="settings_imperial">Imperial (mi/gal)</string>
+    <string name="settings_convert_title">Cambiar divisa a %1$s</string>
+    <string name="settings_convert_rate">Tasa de cambio</string>
+    <string name="settings_convert_warning">Todos los gastos históricos de este vehículo se convertirán a la nueva moneda.</string>
+    <string name="settings_convert_no_convert">No convertir, solo cambiar etiqueta</string>
+    <string name="settings_convert_success">Divisa convertida a %1$s</string>
+    <string name="settings_convert_no_convert_success">Divisa cambiada a %1$s (montos sin convertir)</string>
 
     <!-- Objetivos -->
     <string name="goals_title">Objetivos y Pendientes</string>
     <string name="goals_add">Agregar Objetivo</string>
     <string name="goals_empty">No tienes objetivos pendientes. ¡Agrega algo que quieras hacerle a tu auto!</string>
+    <string name="goals_empty_priority">No hay objetivos de prioridad %1$s</string>
+    <string name="goals_empty_desc">Toca el botón + para agregar algo.</string>
+    <string name="goals_empty_priority_desc">Prueba cambiando el filtro o agrega uno nuevo.</string>
     <string name="goals_total_pending">Total estimado pendiente:</string>
+    <string name="goals_filter_all">Todas (%1$d)</string>
+    <string name="goals_filter_showing">Mostrando: %1$s</string>
+    <string name="goals_general_total">Total general pendiente: %1$s</string>
     <string name="goals_range">entre %1$s y %2$s</string>
     <string name="goals_completed_section">Comprados (%1$d)</string>
     <string name="goals_est">Estimado: %1$s</string>
@@ -184,9 +316,14 @@
     <string name="goals_field_date">Fecha objetivo (Opcional)</string>
     <string name="goals_field_notes">Notas (Opcional)</string>
     <string name="goal_err_valid">Ingresa un título y un monto válido</string>
+    <string name="goal_err_negative">Los montos no pueden ser negativos.</string>
+    <string name="goal_err_max">El monto máximo no puede ser menor al estimado.</string>
     <string name="goals_save">Guardar Objetivo</string>
-
-    <!-- Detalle de Objetivo -->
+    <string name="goals_sort_title">Ordenar</string>
+    <string name="goals_sort_priority_desc">Prioridad: alta → baja</string>
+    <string name="goals_sort_priority_asc">Prioridad: baja → alta</string>
+    <string name="goals_sort_date">Fecha objetivo</string>
+    <string name="goals_sort_amount">Monto estimado</string>
     <string name="goals_detail_title">Detalle del Objetivo</string>
     <string name="goals_priority">Prioridad %1$s</string>
     <string name="goals_estimated_cost">Costo estimado:</string>
@@ -198,34 +335,93 @@
     <string name="goals_diff_over">Gastaste %1$s más de lo estimado</string>
     <string name="goals_diff_saved">¡Ahorraste %1$s!</string>
 
-    <!-- Prevención de pérdida de datos -->
+    <!-- Documentos -->
+    <string name="documents_title">Documentos</string>
+    <string name="docs_empty">No hay documentos registrados.</string>
+    <string name="docs_delete_title">Eliminar documento</string>
+    <string name="docs_delete_desc">¿Estás seguro que deseas eliminar \'%1$s\'?</string>
+    <string name="docs_menu_title">¿Qué deseas hacer con este documento?</string>
+    <string name="docs_expired">Venció hace %1$d días</string>
+    <string name="docs_expiring">Vence en %1$d días</string>
+    <string name="docs_valid">Vigente</string>
+    <string name="docs_expiry_date_label">Vence: %1$s</string>
+    <string name="docs_add">Agregar Documento</string>
+
+    <!-- Detalle de Documento -->
+    <string name="doc_detail_title">Detalle del Documento</string>
+    <string name="doc_detail_issue_date">Expedición: %1$s</string>
+    <string name="doc_detail_expiry_date">Vencimiento: %1$s</string>
+    <string name="doc_detail_notes">Notas</string>
+    <string name="doc_detail_attachment">Archivo adjunto</string>
+    <string name="doc_detail_tap_image">Toca la imagen para verla completa y compartirla</string>
+    <string name="doc_detail_pdf">Documento PDF</string>
+    <string name="doc_detail_open">Abrir</string>
+    <string name="doc_detail_save">Guardar</string>
+    <string name="doc_detail_no_attachment">Este documento no tiene un archivo adjunto.</string>
+
+    <!-- Accesibilidad y Formularios Compartidos -->
     <string name="discard_changes_title">Descartar cambios</string>
     <string name="discard_changes_msg">¿Estás seguro de que quieres salir? Perderás los datos que ingresaste.</string>
-    <string name="action_discard">Descartar</string>
-    <string name="action_keep_editing">Seguir editando</string>
-
-    <!-- Accesibilidad -->
-    <string name="priority_alta">Prioridad Alta</string>
-    <string name="priority_media">Prioridad Media</string>
-    <string name="priority_baja">Prioridad Baja</string>
-
     <string name="cd_maint_overdue">Mantenimiento vencido</string>
     <string name="cd_maint_soon">Mantenimiento próximo</string>
     <string name="cd_maint_ok">Mantenimiento al día</string>
     <string name="cd_maint_unknown">Mantenimiento sin datos</string>
+    <string name="cd_back_to_vehicles">Volver a Mis vehículos</string>
+    <string name="cd_edit_vehicle">Editar vehículo</string>
+    <string name="cd_switch_vehicle">Cambiar de vehículo</string>
+    <string name="btn_take_photo">Tomar Foto</string>
+    <string name="btn_retake_photo">Repetir Foto</string>
+    <string name="btn_gallery">Galería</string>
+    <string name="btn_remove_photo">Eliminar foto</string>
+    <string name="field_odometer">Odómetro</string>
+    <string name="field_date">Fecha</string>
+    <string name="field_notes">Notas (Opcional)</string>
+    <string name="field_description">Descripción</string>
+    <string name="field_attendance">Fecha de la carga *</string>
+    <string name="field_service_date">Fecha del servicio *</string>
+
+    <!-- Onboarding -->
+    <string name="onboard_1_title">Conoce el costo real de tu auto.</string>
+    <string name="onboard_1_desc">Registra tus gastos y descubre exactamente cuánto te cuesta cada kilómetro recorrido.</string>
+    <string name="onboard_2_title">Controla mantenimiento y reparaciones.</string>
+    <string name="onboard_2_desc">Lleva una bitácora completa. Nunca vuelvas a olvidar cuándo te toca el próximo servicio.</string>
+    <string name="onboard_3_title">Nunca olvides un trámite importante.</string>
+    <string name="onboard_3_desc">Recibe recordatorios por fecha y kilometraje para tu seguro, verificación y tenencia.</string>
+    <string name="onboard_skip">Saltar</string>
+    <string name="onboard_next">Siguiente</string>
+    <string name="onboard_start">Agregar mi primer auto</string>
+
+    <!-- Editar Documento -->
+    <string name="doc_edit_title">Documento</string>
+    <string name="doc_edit_name_label">Nombre (Ej. Póliza GNP) *</string>
+    <string name="doc_edit_type_label">Tipo de documento *</string>
+    <string name="doc_edit_type_placeholder">Selecciona un tipo</string>
+    <string name="doc_type_insurance">SEGURO</string>
+    <string name="doc_type_circulation">CIRCULACION</string>
+    <string name="doc_type_verification">VERIFICACION</string>
+    <string name="doc_type_invoice">FACTURA</string>
+    <string name="doc_type_other">OTRO</string>
+    <string name="doc_edit_issue_date_label">Fecha de Expedición (Opcional)</string>
+    <string name="doc_edit_date_placeholder">Toca para elegir fecha</string>
+    <string name="doc_edit_expiry_date_label">Fecha de Vencimiento *</string>
+    <string name="doc_edit_lead_days_label">Días de anticipación para avisar (1-90)</string>
+    <string name="doc_edit_attach_file">Adjuntar archivo (Opcional)</string>
+    <string name="doc_edit_change_file">Cambiar archivo adjunto</string>
+    <string name="doc_edit_file_selected">Archivo seleccionado</string>
+    <string name="doc_edit_err_required">Nombre y fecha de vencimiento son obligatorios</string>
+    <string name="doc_edit_err_type">Selecciona un tipo de documento</string>
+    <string name="doc_edit_err_days">Los días de aviso deben estar entre 1 y 90.</string>
+    <string name="doc_edit_err_date">La fecha de vencimiento no puede ser menor a la de expedición.</string>
+
+    <!-- Divisas -->
+    <string name="currency_mxn">Peso mexicano</string>
+    <string name="currency_usd">Dólar estadounidense</string>
+    <string name="currency_eur">Euro</string>
+    <string name="currency_cad">Dólar canadiense</string>
+    <string name="currency_gbp">Libra esterlina</string>
 
     <plurals name="expenses_count">
         <item quantity="one">%d gasto</item>
         <item quantity="other">%d gastos</item>
     </plurals>
-
-    <!-- Sistema de diseño -->
-    <string name="action_undo">Deshacer</string>
-    <string name="action_confirm">Confirmar</string>
-    <string name="action_ok">Aceptar</string>
-    <string name="action_yes">Sí</string>
-    <string name="status_ok">Al día</string>
-    <string name="status_warning">Próximo</string>
-    <string name="status_error">Vencido</string>
-    <string name="status_info">Información</string>
 </resources>

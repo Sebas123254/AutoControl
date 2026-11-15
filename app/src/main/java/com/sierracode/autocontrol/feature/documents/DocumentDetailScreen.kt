@@ -69,7 +69,6 @@ fun DocumentDetailScreen(
     val context = LocalContext.current
     var showFullScreenImage by remember { mutableStateOf(false) }
 
-    // Launcher para "Guardar PDF" (Crea un archivo en el dispositivo)
     val downloadLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/pdf")
     ) { uri: Uri? ->
@@ -99,15 +98,15 @@ fun DocumentDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Detalle del Documento") },
+                title = { Text(stringResource(R.string.doc_detail_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { onEditClick(d.id) }) {
-                        Icon(Icons.Default.Edit, "Editar")
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.action_edit))
                     }
                 }
             )
@@ -123,32 +122,32 @@ fun DocumentDetailScreen(
             HorizontalDivider()
 
             if (d.issueDateEpochDay != null) {
-                Text("Expedición: ${formatDate(d.issueDateEpochDay)}", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.doc_detail_issue_date, formatDate(d.issueDateEpochDay)), style = MaterialTheme.typography.bodyLarge)
             }
-            Text("Vencimiento: ${formatDate(d.expiryDateEpochDay)}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.doc_detail_expiry_date, formatDate(d.expiryDateEpochDay)), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
 
             if (!d.notes.isNullOrBlank()) {
-                Text("Notas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.doc_detail_notes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(d.notes, style = MaterialTheme.typography.bodyMedium)
             }
 
             Spacer(Modifier.height(16.dp))
 
             if (isImage) {
-                Text("Archivo adjunto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.doc_detail_attachment), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 AsyncImage(
                     model = d.fileUri,
-                    contentDescription = "Documento adjunto",
+                    contentDescription = stringResource(R.string.doc_detail_attachment),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(250.dp)
                         .clickable { showFullScreenImage = true },
                     contentScale = ContentScale.Fit
                 )
-                Text("Toca la imagen para verla completa y compartirla", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.doc_detail_tap_image), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             } else if (isPdf) {
-                Text("Archivo adjunto (PDF)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.doc_detail_attachment), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -157,7 +156,7 @@ fun DocumentDetailScreen(
                         Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Documento PDF", fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.doc_detail_pdf), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -171,15 +170,15 @@ fun DocumentDetailScreen(
                             try { context.startActivity(intent) } catch (e: Exception) { e.printStackTrace() }
                         },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Abrir") }
+                    ) { Text(stringResource(R.string.doc_detail_open)) }
 
                     OutlinedButton(
                         onClick = { downloadLauncher.launch("${d.name}.pdf") },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Guardar") }
+                    ) { Text(stringResource(R.string.doc_detail_save)) }
                 }
             } else {
-                Text("Este documento no tiene un archivo adjunto.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.doc_detail_no_attachment), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

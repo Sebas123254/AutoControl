@@ -40,6 +40,7 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.core.util.ImageUtils
@@ -186,7 +187,7 @@ class ExpenseEditViewModel @Inject constructor(
             return
         }
         if (amountDouble > 1_000_000.0) {
-            error = "El monto excede el límite permitido."
+            error = context.getString(R.string.expense_edit_err_high)
             return
         }
         if (selectedCategory == null) {
@@ -337,16 +338,16 @@ fun ExpenseEditScreen(
         AlertDialog(
             onDismissRequest = { showProLimitDialog = false },
             icon = { Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
-            title = { Text("Límite alcanzado") },
-            text = { Text("Has alcanzado el límite de 50 gastos al mes en la versión gratuita.\n\nActualiza a PRO para registrar gastos ilimitados.") },
+            title = { Text(stringResource(R.string.expense_edit_limit_title)) },
+            text = { Text(stringResource(R.string.expense_edit_limit_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     showProLimitDialog = false
                     onOpenSettings()
-                }) { Text("Ver opciones") }
+                }) { Text(stringResource(R.string.expense_edit_limit_button)) }
             },
             dismissButton = {
-                TextButton(onClick = { showProLimitDialog = false }) { Text("Cancelar") }
+                TextButton(onClick = { showProLimitDialog = false }) { Text(stringResource(R.string.action_cancel)) }
             }
         )
     }
@@ -363,9 +364,9 @@ fun ExpenseEditScreen(
                         vm.updateDate(date)
                     }
                     showDatePicker = false
-                }) { Text("Aceptar") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) } }
         ) { DatePicker(state = state) }
     }
 
@@ -396,7 +397,7 @@ fun ExpenseEditScreen(
         ) {
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
-                    value = vm.selectedCategory?.name ?: stringResource(R.string.expense_edit_select_category),
+                    value = vm.selectedCategory?.let { localizedCategoryName(it.id, it.name) } ?: stringResource(R.string.expense_edit_select_category),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.expense_edit_category)) },
@@ -406,7 +407,7 @@ fun ExpenseEditScreen(
                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     categories.forEach { category ->
                         DropdownMenuItem(
-                            text = { Text(category.name) },
+                            text = { Text(localizedCategoryName(category.id, category.name)) },
                             onClick = {
                                 vm.updateCategory(category)
                                 expanded = false
@@ -442,7 +443,7 @@ fun ExpenseEditScreen(
                 label = stringResource(R.string.expense_edit_amount),
                 currencyCode = config.currencyCode,
                 isError = vm.isAmountError,
-                errorMessage = if (vm.isAmountError) "El monto debe ser mayor a 0" else null,
+                errorMessage = if (vm.isAmountError) stringResource(R.string.expense_amount_err) else null,
                 imeAction = ImeAction.Next,
                 onImeAction = { focusManager.moveFocus(FocusDirection.Down) },
                 modifier = Modifier.fillMaxWidth()
@@ -455,8 +456,8 @@ fun ExpenseEditScreen(
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
-                    label = { Text("Fecha del gasto *") },
-                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir fecha") },
+                    label = { Text(stringResource(R.string.expense_edit_date)) },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.action_choose_date)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         disabledTextColor = MaterialTheme.colorScheme.onSurface,
                         disabledBorderColor = MaterialTheme.colorScheme.outline,
@@ -481,7 +482,6 @@ fun ExpenseEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // CORRECCIÓN: Quitamos keyboardActions que cerraban el foco al instante en la descripción.
             OutlinedTextField(
                 value = vm.description,
                 onValueChange = { vm.updateDescription(it) },
@@ -504,7 +504,7 @@ fun ExpenseEditScreen(
                 ) {
                     Icon(Icons.Default.PhotoCamera, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text(if (vm.selectedImageUri == null) "Tomar Foto" else "Repetir Foto", maxLines = 1)
+                    Text(if (vm.selectedImageUri == null) stringResource(R.string.expense_edit_camera) else stringResource(R.string.expense_edit_retake), maxLines = 1)
                 }
                 OutlinedButton(
                     onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -512,7 +512,7 @@ fun ExpenseEditScreen(
                 ) {
                     Icon(Icons.Default.Image, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Galería", maxLines = 1)
+                    Text(stringResource(R.string.expense_edit_gallery), maxLines = 1)
                 }
             }
 
@@ -538,7 +538,7 @@ fun ExpenseEditScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Eliminar foto",
+                            contentDescription = stringResource(R.string.expense_edit_delete_photo),
                             tint = Color.White
                         )
                     }

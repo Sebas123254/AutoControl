@@ -190,7 +190,7 @@ fun ReminderCard(
                 IconButton(onClick = { showSnoozeMenu = true }) {
                     Icon(
                         Icons.Default.Schedule,
-                        contentDescription = "Posponer",
+                        contentDescription = stringResource(R.string.reminders_snooze),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -199,14 +199,14 @@ fun ReminderCard(
                     onDismissRequest = { showSnoozeMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Posponer 1 día") },
+                        text = { Text(stringResource(R.string.reminders_snooze_1d)) },
                         onClick = {
                             onSnooze(1)
                             showSnoozeMenu = false
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Posponer 1 semana") },
+                        text = { Text(stringResource(R.string.reminders_snooze_1w)) },
                         onClick = {
                             onSnooze(7)
                             showSnoozeMenu = false

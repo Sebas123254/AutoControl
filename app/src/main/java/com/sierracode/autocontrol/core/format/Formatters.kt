@@ -8,34 +8,28 @@ import com.sierracode.autocontrol.domain.calc.UnitConverter
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
 import kotlin.math.roundToLong
-
-private val mx = Locale("es", "MX")
-private val dateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy", mx)
 
 @Composable
 fun formatMoneyCents(cents: Long?): String {
     if (cents == null) return "—"
     val config = LocalAppConfig.current
-    val currency = try { Currency.getInstance(config.currencyCode) } catch (e: Exception) { Currency.getInstance("MXN") }
-    val locale = when (config.currencyCode) {
-        "MXN" -> mx
-        "USD" -> Locale.US
-        "EUR" -> Locale.GERMANY
-        "GBP" -> Locale.UK
-        "CAD" -> Locale.CANADA
-        else -> Locale.getDefault()
+    val locale = Locale.getDefault()
+    val currency = try {
+        Currency.getInstance(config.currencyCode)
+    } catch (e: Exception) {
+        Currency.getInstance("MXN")
     }
+
     val money = NumberFormat.getCurrencyInstance(locale).apply {
         this.currency = currency
         maximumFractionDigits = 2
     }
 
-    // Agregamos el código de la divisa para evitar la ambigüedad con el símbolo $
-    val suffix = if (config.currencyCode == "MXN" || config.currencyCode == "USD") " ${config.currencyCode}" else ""
-
+    val suffix = if (config.currencyCode == "MXN" && locale.language != "en") " ${config.currencyCode}" else ""
     return "${money.format(cents / 100.0)}$suffix"
 }
 
@@ -86,14 +80,15 @@ fun formatCostPerDistance(costPerKmCents: Double?): String {
         UnitConverter.costPerKmToCostPerMile(costPerKmCents) / 100.0
     }
     val suffix = if (config.unitSystem == UnitSystem.METRIC) "/km" else "/mi"
-
-    // Ahora formatMoneyCents ya incluye el código (ej. $1.50 USD), y le agregamos el /km o /mi
     return formatMoneyCents((costPerUnit * 100).roundToLong()) + suffix
 }
 
-// Esta función no depende de configuración regional
-fun formatDate(epochDay: Long?): String =
-    if (epochDay == null) "—" else LocalDate.ofEpochDay(epochDay).format(dateFmt)
+fun formatDate(epochDay: Long?): String {
+    if (epochDay == null) return "—"
+    val locale = Locale.getDefault()
+    val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+    return LocalDate.ofEpochDay(epochDay).format(formatter)
+}
 
 fun formatDouble(v: Double?, digits: Int = 2, suffix: String = ""): String =
     if (v == null) "—" else "%.${digits}f%s".format(Locale.US, v, suffix)

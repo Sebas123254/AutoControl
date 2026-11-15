@@ -58,7 +58,7 @@ data class EvaluatedSchedule(
 
 data class FuelStats(
     val avgKmL: Double?,
-    val hint: String?
+    val hintResId: Int?
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -153,14 +153,16 @@ class DashboardViewModel @Inject constructor(
                 FuelPoint(f.odometer, f.litersMilli / 1000.0, f.fullTank, f.amountCents, f.dateEpochDay)
             }
             val summary = summarizeFuel(points)
-            val hint = when {
-                points.isEmpty() -> "Registra tu primera carga de gasolina."
-                points.any { it.odometer == null } -> "Falta el odómetro en algunas cargas."
-                points.count { it.fullTank } < 2 -> "Necesitas al menos 2 cargas de 'Tanque lleno'."
-                summary.avgKmPerLiter == null -> "Asegúrate de que las cargas con tanque lleno sean consecutivas."
+
+            // CORRECCIÓN: Devolvemos la ID del string en lugar del texto duro
+            val hintResId = when {
+                points.isEmpty() -> R.string.dashboard_maint_fuel_hint
+                points.any { it.odometer == null } -> R.string.dashboard_maint_odo_hint
+                points.count { it.fullTank } < 2 -> R.string.dashboard_maint_full_hint
+                summary.avgKmPerLiter == null -> R.string.dashboard_maint_consecutive_hint
                 else -> null
             }
-            FuelStats(summary.avgKmPerLiter, hint)
+            FuelStats(summary.avgKmPerLiter, hintResId)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -229,29 +231,34 @@ fun DashboardScreen(
     val hasPendingAlerts = schedules.any { it.urgency == Urgency.OVERDUE || it.urgency == Urgency.SOON } ||
             dueReminders.isNotEmpty()
 
+    // Pre-calculamos strings para los callbacks
+    val deletedSnackbarTemplate = stringResource(R.string.vehicles_delete_maint_snackbar, "%s")
+    val updatedSnackbar = stringResource(R.string.vehicles_maint_updated)
+
     if (scheduleToDelete != null) {
         AlertDialog(
             onDismissRequest = { scheduleToDelete = null },
-            title = { Text("Eliminar mantenimiento") },
-            text = { Text("¿Deseas eliminar la programación de '${scheduleToDelete!!.name}'? El historial de gastos no se borrará.") },
+            title = { Text(stringResource(R.string.vehicles_delete_maint_title)) },
+            text = { Text(stringResource(R.string.vehicles_delete_maint_desc, scheduleToDelete!!.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     val nombre = scheduleToDelete!!.name
                     vm.deleteSchedule(scheduleToDelete!!.id)
                     scheduleToDelete = null
-                    scope.launch { snackbarHostState.showSnackbar("Mantenimiento '$nombre' eliminado") }
+                    // CORRECCIÓN: Usamos el template formateado
+                    scope.launch { snackbarHostState.showSnackbar(deletedSnackbarTemplate.format(nombre)) }
                 }) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { scheduleToDelete = null }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { scheduleToDelete = null }) { Text(stringResource(R.string.action_cancel)) } }
         )
     }
 
     if (showAllSchedules) {
         AlertDialog(
             onDismissRequest = { showAllSchedules = false },
-            title = { Text("Mantenimientos programados") },
+            title = { Text(stringResource(R.string.vehicles_maint_scheduled)) },
             text = {
                 Column {
                     schedules.forEach { s ->
@@ -265,13 +272,13 @@ fun DashboardScreen(
                                 val nombre = s.name
                                 vm.deleteSchedule(s.id)
                                 showAllSchedules = false
-                                scope.launch { snackbarHostState.showSnackbar("Mantenimiento '$nombre' eliminado") }
-                            }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                                scope.launch { snackbarHostState.showSnackbar(deletedSnackbarTemplate.format(nombre)) }
+                            }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showAllSchedules = false }) { Text("Cerrar") } }
+            confirmButton = { TextButton(onClick = { showAllSchedules = false }) { Text(stringResource(R.string.action_close)) } }
         )
     }
 
@@ -290,33 +297,33 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text("Editar: ${s.name}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.vehicles_edit_maint_title, s.name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
                 OutlinedTextField(
                     value = intervalKm,
                     onValueChange = { intervalKm = it; errorMsg = null },
-                    label = { Text("Intervalo en kilómetros (Opcional)") },
+                    label = { Text(stringResource(R.string.vehicles_maint_interval_km)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = intervalMonths,
                     onValueChange = { intervalMonths = it; errorMsg = null },
-                    label = { Text("Intervalo en meses (Opcional)") },
+                    label = { Text(stringResource(R.string.vehicles_maint_interval_months)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = remindBeforeKm,
                     onValueChange = { remindBeforeKm = it; errorMsg = null },
-                    label = { Text("Avisar antes de (km)") },
+                    label = { Text(stringResource(R.string.vehicles_maint_remind_km)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = remindBeforeDays,
                     onValueChange = { remindBeforeDays = it; errorMsg = null },
-                    label = { Text("Avisar antes de (días)") },
+                    label = { Text(stringResource(R.string.vehicles_maint_remind_days)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -344,9 +351,9 @@ fun DashboardScreen(
                         remindBeforeKm = newRemKm,
                         remindBeforeDays = newRemDays
                     ))
-                    scope.launch { snackbarHostState.showSnackbar("Mantenimiento actualizado") }
+                    scope.launch { snackbarHostState.showSnackbar(updatedSnackbar) }
                 }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                    Text("Guardar cambios")
+                    Text(stringResource(R.string.action_save))
                 }
 
                 TextButton(
@@ -356,7 +363,7 @@ fun DashboardScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Eliminar mantenimiento", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.action_delete) + " mantenimiento", color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -398,7 +405,7 @@ fun DashboardScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a Mis vehículos")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back_to_vehicles))
                     }
                 },
                 actions = {
@@ -433,42 +440,41 @@ fun DashboardScreen(
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("${v.brand} ${v.model}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("${formatKm(v.odometer)} • ${v.plates ?: "Sin placas"}", style = MaterialTheme.typography.bodyMedium)
+                            Text("${formatKm(v.odometer)} • ${v.plates ?: stringResource(R.string.vehicles_no_plates)}", style = MaterialTheme.typography.bodyMedium)
                         }
                         IconButton(onClick = onEditVehicle) {
-                            Icon(Icons.Default.Edit, contentDescription = "Editar vehículo", modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_vehicle), modifier = Modifier.size(20.dp))
                         }
                     }
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    QuickActionButton(Icons.Default.LocalGasStation, "Gasolina", onRegisterFuel, Modifier.weight(1f))
-                    QuickActionButton(Icons.Default.Receipt, "Gasto", onRegisterExpense, Modifier.weight(1f))
-                    QuickActionButton(Icons.Default.Build, "Mantenimiento", onRegisterMaintenance, Modifier.weight(1f))
+                    QuickActionButton(Icons.Default.LocalGasStation, stringResource(R.string.dashboard_action_fuel), onRegisterFuel, Modifier.weight(1f))
+                    QuickActionButton(Icons.Default.Receipt, stringResource(R.string.dashboard_action_expense), onRegisterExpense, Modifier.weight(1f))
+                    QuickActionButton(Icons.Default.Build, stringResource(R.string.dashboard_action_maint), onRegisterMaintenance, Modifier.weight(1f))
                 }
 
                 val topSchedule = schedules.firstOrNull()
                 if (topSchedule != null) {
-                    SectionHeader("Próximo mantenimiento", if (schedules.size > 1) "Ver todos" else null) {
+                    SectionHeader(stringResource(R.string.dashboard_next_maint), if (schedules.size > 1) stringResource(R.string.dashboard_view_all) else null) {
                         if (schedules.size > 1) showAllSchedules = true
                     }
                     MaintenanceCard(topSchedule, onClick = { vm.openScheduleEditor(topSchedule) })
                 }
 
-                SectionHeader("Resumen financiero")
+                SectionHeader(stringResource(R.string.dashboard_performance))
 
-                // FILTROS DEL DASHBOARD
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = selectedPeriod == SummaryPeriod.THIS_MONTH,
                         onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_MONTH) },
-                        label = { Text("Este mes") },
+                        label = { Text(stringResource(R.string.dashboard_period_this_month)) },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
                         selected = selectedPeriod == SummaryPeriod.LAST_MONTH,
                         onClick = { vm.setSummaryPeriod(SummaryPeriod.LAST_MONTH) },
-                        label = { Text("Mes pasado") },
+                        label = { Text(stringResource(R.string.dashboard_period_last_month)) },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -476,13 +482,13 @@ fun DashboardScreen(
                     FilterChip(
                         selected = selectedPeriod == SummaryPeriod.THIS_YEAR,
                         onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_YEAR) },
-                        label = { Text("Este año") },
+                        label = { Text(stringResource(R.string.dashboard_period_this_year)) },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
                         selected = selectedPeriod == SummaryPeriod.ALL_TIME,
                         onClick = { vm.setSummaryPeriod(SummaryPeriod.ALL_TIME) },
-                        label = { Text("Histórico") },
+                        label = { Text(stringResource(R.string.dashboard_period_all_time)) },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -490,26 +496,26 @@ fun DashboardScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     MetricCard(
                         title = when(selectedPeriod) {
-                            SummaryPeriod.THIS_MONTH -> "Gasto del mes"
-                            SummaryPeriod.LAST_MONTH -> "Gasto mes pasado"
-                            SummaryPeriod.THIS_YEAR -> "Gasto del año"
-                            SummaryPeriod.ALL_TIME -> "Gasto histórico"
+                            SummaryPeriod.THIS_MONTH -> stringResource(R.string.dashboard_period_this_month)
+                            SummaryPeriod.LAST_MONTH -> stringResource(R.string.dashboard_period_last_month)
+                            SummaryPeriod.THIS_YEAR -> stringResource(R.string.dashboard_period_this_year)
+                            SummaryPeriod.ALL_TIME -> stringResource(R.string.dashboard_period_all_time)
                         },
                         value = formatMoneyCents(totalSpent),
                         modifier = Modifier.weight(1f)
                     )
                     if (costPerKm != null) {
                         MetricCard(
-                            title = "Costo por km histórico",
+                            title = stringResource(R.string.dashboard_cost_per_km),
                             value = formatCostPerDistance(costPerKm),
                             modifier = Modifier.weight(1f)
                         )
                     } else {
                         MetricCard(
-                            title = "Costo por km histórico",
+                            title = stringResource(R.string.dashboard_cost_per_km),
                             value = "—",
                             modifier = Modifier.weight(1f),
-                            subtitle = "Necesitas 2 gastos con kilometraje"
+                            subtitle = stringResource(R.string.dashboard_no_km_data)
                         )
                     }
                 }
@@ -523,9 +529,9 @@ fun DashboardScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.Bottom
                             ) {
-                                Text("Costo total acumulado (histórico)", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.dashboard_total_cost), style = MaterialTheme.typography.labelMedium)
                                 Text(
-                                    "Precio de compra: ${formatMoneyCents(v.purchasePriceCents)}",
+                                    stringResource(R.string.dashboard_purchase_price, formatMoneyCents(v.purchasePriceCents)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -541,14 +547,14 @@ fun DashboardScreen(
                     }
                 } else {
                     EmptyStateCard(
-                        title = "Precio de compra no registrado",
-                        description = "Agrega el precio original para conocer el costo total acumulado del vehículo.",
-                        actionLabel = "Agregar precio",
+                        title = stringResource(R.string.dashboard_price_missing),
+                        description = stringResource(R.string.dashboard_price_desc),
+                        actionLabel = stringResource(R.string.dashboard_add_price),
                         onActionClick = onEditVehicle
                     )
                 }
 
-                SectionHeader("Rendimiento")
+                SectionHeader(stringResource(R.string.dashboard_performance))
                 if (fuelStats?.avgKmL != null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -556,14 +562,15 @@ fun DashboardScreen(
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(formatEfficiency(fuelStats!!.avgKmL), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                            Text("Promedio histórico", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text(stringResource(R.string.dashboard_performance_avg), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                     }
                 } else {
                     EmptyStateCard(
-                        title = "Sin datos suficientes",
-                        description = fuelStats?.hint ?: "Registra al menos 2 cargas de tanque lleno.",
-                        actionLabel = "Registrar carga",
+                        title = stringResource(R.string.dashboard_no_data),
+                        // CORRECCIÓN: Si hintResId es nulo, usamos el fallback
+                        description = fuelStats?.hintResId?.let { stringResource(it) } ?: stringResource(R.string.dashboard_maint_full_hint),
+                        actionLabel = stringResource(R.string.dashboard_register_fuel),
                         onActionClick = onRegisterFuel
                     )
                 }
@@ -629,11 +636,12 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
         Urgency.SOON -> MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // CORRECCIÓN: Usamos stringResource para el estado
     val statusText = when (schedule.urgency) {
-        Urgency.OVERDUE -> "Vencido"
-        Urgency.SOON -> "Próximo"
-        Urgency.OK -> "Al día"
-        Urgency.UNKNOWN -> "Sin datos"
+        Urgency.OVERDUE -> stringResource(R.string.cd_maint_overdue)
+        Urgency.SOON -> stringResource(R.string.cd_maint_soon)
+        Urgency.OK -> stringResource(R.string.cd_maint_ok)
+        Urgency.UNKNOWN -> stringResource(R.string.cd_maint_unknown)
     }
     val statusIcon = when (schedule.urgency) {
         Urgency.OVERDUE -> Icons.Default.Warning
@@ -655,7 +663,7 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(schedule.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
                     Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(16.dp), tint = contentColor)
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_vehicle), modifier = Modifier.size(16.dp), tint = contentColor)
                 }
                 StatusChip(
                     text = statusText,
@@ -674,7 +682,7 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Faltan ${formatKm(schedule.remainingKm)} · a los ${formatKm(schedule.targetOdometer)}",
+                    text = stringResource(R.string.dashboard_maint_card_faltan, formatKm(schedule.remainingKm), formatKm(schedule.targetOdometer)),
                     style = MaterialTheme.typography.bodySmall,
                     color = contentColor
                 )

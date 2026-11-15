@@ -39,6 +39,7 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.core.util.ImageUtils
@@ -131,7 +132,7 @@ class MaintenanceEditViewModel @Inject constructor(
         } else null
 
         if (odoKm != null && nextOdoKm != null && nextOdoKm <= odoKm) {
-            error = "El próximo servicio debe ser mayor al odómetro actual."
+            error = context.getString(R.string.maint_edit_err_odo)
             return
         }
 
@@ -311,9 +312,9 @@ fun MaintenanceEditScreen(
                         vm.updateDate(date)
                     }
                     showDatePicker = false
-                }) { Text("Aceptar") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) } }
         ) { DatePicker(state = state) }
     }
 
@@ -343,7 +344,7 @@ fun MaintenanceEditScreen(
         ) {
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
-                    value = vm.selectedCategory?.name ?: stringResource(R.string.maint_edit_select_type),
+                    value = vm.selectedCategory?.let { localizedCategoryName(it.id, it.name) } ?: stringResource(R.string.maint_edit_select_type),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.maint_edit_type)) },
@@ -353,7 +354,7 @@ fun MaintenanceEditScreen(
                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     categories.forEach { category ->
                         DropdownMenuItem(
-                            text = { Text(category.name) },
+                            text = { Text(localizedCategoryName(category.id, category.name)) },
                             onClick = {
                                 vm.updateCategory(category)
                                 expanded = false
@@ -370,8 +371,8 @@ fun MaintenanceEditScreen(
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
-                    label = { Text("Fecha del servicio *") },
-                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = "Elegir fecha") },
+                    label = { Text(stringResource(R.string.maint_edit_fecha_servicio)) },
+                    trailingIcon = { Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.action_choose_date)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         disabledTextColor = MaterialTheme.colorScheme.onSurface,
                         disabledBorderColor = MaterialTheme.colorScheme.outline,
@@ -383,7 +384,6 @@ fun MaintenanceEditScreen(
                 Box(modifier = Modifier.matchParentSize().clickable { showDatePicker = true })
             }
 
-            // CAMBIO: CurrencyField para el costo
             CurrencyField(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
@@ -443,7 +443,7 @@ fun MaintenanceEditScreen(
                 ) {
                     Icon(Icons.Default.PhotoCamera, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text(if (vm.selectedImageUri == null) "Tomar Foto" else "Repetir Foto", maxLines = 1)
+                    Text(if (vm.selectedImageUri == null) stringResource(R.string.expense_edit_camera) else stringResource(R.string.expense_edit_retake), maxLines = 1)
                 }
                 OutlinedButton(
                     onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -451,7 +451,7 @@ fun MaintenanceEditScreen(
                 ) {
                     Icon(Icons.Default.Image, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Galería", maxLines = 1)
+                    Text(stringResource(R.string.expense_edit_gallery), maxLines = 1)
                 }
             }
 
@@ -477,7 +477,7 @@ fun MaintenanceEditScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Eliminar foto",
+                            contentDescription = stringResource(R.string.expense_edit_delete_photo),
                             tint = Color.White
                         )
                     }

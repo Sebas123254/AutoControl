@@ -140,8 +140,8 @@ fun StatsScreen(
                 EmptyStateCard(
                     icon = Icons.Default.Receipt,
                     title = stringResource(R.string.stats_empty),
-                    description = "Registra tu primer gasto para empezar a ver estadísticas de tu vehículo.",
-                    actionLabel = "Ir a Gastos",
+                    description = stringResource(R.string.stats_empty_desc),
+                    actionLabel = stringResource(R.string.stats_go_to_expenses),
                     onActionClick = onOpenExpenses
                 )
             }
@@ -232,12 +232,12 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
     val formattedAmounts = data.map { formatMoneyCents(it.totalCents) }
 
     // ACCESIBILIDAD: Construimos un texto descriptivo para TalkBack
-    val chartDescription = remember(data) {
+    val chartDescriptionPrefix = stringResource(R.string.stats_chart_desc)
+    val chartDescription = remember(data, chartDescriptionPrefix) {
         buildString {
-            append("Gráfica de evolución mensual. ")
+            append(chartDescriptionPrefix)
             data.forEachIndexed { index, stat ->
                 append("${stat.monthLabel}: ${formattedAmounts[index]}. ")
-                if (index < data.size - 1) append("")
             }
         }
     }

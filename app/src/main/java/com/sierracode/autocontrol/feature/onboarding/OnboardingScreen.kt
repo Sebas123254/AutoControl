@@ -1,30 +1,32 @@
 package com.sierracode.autocontrol.feature.onboarding
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(private val settings: SettingsStore) : ViewModel() {
@@ -34,27 +36,15 @@ class OnboardingViewModel @Inject constructor(private val settings: SettingsStor
     }
 }
 
-data class OnboardingPage(val title: String, val body: String, val icon: ImageVector)
+data class OnboardingPage(val titleResId: Int, val bodyResId: Int, val icon: ImageVector)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel()) {
     val pages = listOf(
-        OnboardingPage(
-            "Conoce el costo real de tu auto.",
-            "Registra tus gastos y descubre exactamente cuánto te cuesta cada kilómetro recorrido.",
-            Icons.Default.DirectionsCar
-        ),
-        OnboardingPage(
-            "Controla mantenimiento y reparaciones.",
-            "Lleva una bitácora completa. Nunca vuelvas a olvidar cuándo te toca el próximo servicio.",
-            Icons.Default.Build
-        ),
-        OnboardingPage(
-            "Nunca olvides un trámite importante.",
-            "Recibe recordatorios por fecha y kilometraje para tu seguro, verificación y tenencia.",
-            Icons.Default.Notifications
-        )
+        OnboardingPage(R.string.onboard_1_title, R.string.onboard_1_desc, Icons.Default.DirectionsCar),
+        OnboardingPage(R.string.onboard_2_title, R.string.onboard_2_desc, Icons.Default.Build),
+        OnboardingPage(R.string.onboard_3_title, R.string.onboard_3_desc, Icons.Default.Notifications)
     )
 
     val pager = rememberPagerState(pageCount = { pages.size })
@@ -62,14 +52,13 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
 
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 
-        // Botón Saltar (solo visible si no está en la última página)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (pager.currentPage < pages.size - 1) {
                 TextButton(onClick = { vm.complete(onDone) }) {
-                    Text("Saltar", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.onboard_skip), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                Spacer(Modifier.height(48.dp)) // Mantiene el espacio
+                Spacer(Modifier.height(48.dp))
             }
         }
 
@@ -88,14 +77,14 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
                 )
                 Spacer(Modifier.height(32.dp))
                 Text(
-                    text = page.title,
+                    text = stringResource(page.titleResId),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = page.body,
+                    text = stringResource(page.bodyResId),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -103,7 +92,6 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
             }
         }
 
-        // Indicador de páginas (puntitos)
         Row(
             Modifier.fillMaxWidth().padding(vertical = 24.dp),
             horizontalArrangement = Arrangement.Center
@@ -114,12 +102,11 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
                     modifier = Modifier
                         .padding(4.dp)
                         .size(10.dp)
-                        .background(color, shape = androidx.compose.foundation.shape.CircleShape)
+                        .background(color, shape = CircleShape)
                 )
             }
         }
 
-        // Botón Siguiente / Empezar
         Button(
             onClick = {
                 if (pager.currentPage < pages.size - 1) {
@@ -130,7 +117,7 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
             },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
-            Text(if (pager.currentPage < pages.size - 1) "Siguiente" else "Agregar mi primer auto")
+            Text(stringResource(if (pager.currentPage < pages.size - 1) R.string.onboard_next else R.string.onboard_start))
         }
     }
 }

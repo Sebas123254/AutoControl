@@ -25,6 +25,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.format.localizedCategoryName
+import com.sierracode.autocontrol.core.format.localizedPriority
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
@@ -98,11 +100,11 @@ class GoalEditViewModel @Inject constructor(
             return
         }
         if (est < 0 || (max != null && max < 0)) {
-            error = "Los montos no pueden ser negativos."
+            error = context.getString(R.string.goal_err_negative)
             return
         }
         if (max != null && max < est) {
-            error = "El monto máximo no puede ser menor al estimado."
+            error = context.getString(R.string.goal_err_max)
             return
         }
 
@@ -189,12 +191,11 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // CAMBIO: CurrencyField
             CurrencyField(
                 value = vm.amount,
                 onValueChange = { vm.updateAmount(it) },
                 label = stringResource(R.string.goals_field_amount),
-                currencyCode = "MXN", // Podría venir de config
+                currencyCode = "MXN",
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -207,18 +208,40 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
             )
 
             ExposedDropdownMenuBox(expanded = expandedPrio, onExpandedChange = { expandedPrio = !expandedPrio }) {
-                OutlinedTextField(value = vm.priority, onValueChange = {}, readOnly = true, label = { Text(stringResource(R.string.goals_field_priority)) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedPrio) }, modifier = Modifier.menuAnchor().fillMaxWidth())
+                OutlinedTextField(
+                    value = localizedPriority(vm.priority),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.goals_field_priority)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedPrio) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
                 ExposedDropdownMenu(expanded = expandedPrio, onDismissRequest = { expandedPrio = false }) {
                     listOf("ALTA", "MEDIA", "BAJA").forEach { p ->
-                        DropdownMenuItem(text = { Text(p) }, onClick = { vm.updatePriority(p); expandedPrio = false })
+                        DropdownMenuItem(
+                            text = { Text(localizedPriority(p)) },
+                            onClick = { vm.updatePriority(p); expandedPrio = false }
+                        )
                     }
                 }
             }
 
             ExposedDropdownMenuBox(expanded = expandedCat, onExpandedChange = { expandedCat = !expandedCat }) {
-                OutlinedTextField(value = vm.selectedCategory?.name ?: stringResource(R.string.expense_edit_select_category), onValueChange = {}, readOnly = true, label = { Text(stringResource(R.string.goals_field_category)) }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedCat) }, modifier = Modifier.menuAnchor().fillMaxWidth())
+                OutlinedTextField(
+                    value = vm.selectedCategory?.let { localizedCategoryName(it.id, it.name) } ?: stringResource(R.string.expense_edit_select_category),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.goals_field_category)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedCat) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
                 ExposedDropdownMenu(expanded = expandedCat, onDismissRequest = { expandedCat = false }) {
-                    cats.forEach { c -> DropdownMenuItem(text = { Text(c.name) }, onClick = { vm.updateCategory(c); expandedCat = false }) }
+                    cats.forEach { c ->
+                        DropdownMenuItem(
+                            text = { Text(localizedCategoryName(c.id, c.name)) },
+                            onClick = { vm.updateCategory(c); expandedCat = false }
+                        )
+                    }
                 }
             }
 
@@ -239,7 +262,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                         TextButton(onClick = {
                             state.selectedDateMillis?.let { vm.updateTargetDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) };
                             showDatePicker = false
-                        }) { Text(stringResource(R.string.action_understood)) }
+                        }) { Text(stringResource(R.string.action_ok)) }
                     },
                     dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) } }
                 ) { DatePicker(state = state) }

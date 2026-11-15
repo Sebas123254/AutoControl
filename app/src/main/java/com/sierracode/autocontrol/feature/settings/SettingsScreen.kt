@@ -101,7 +101,6 @@ fun SettingsScreen(
     val units by vm.currentUnitSystem.collectAsState()
 
     var showCurrencyMenu by remember { mutableStateOf(false) }
-
     var showConversionDialog by remember { mutableStateOf(false) }
     var targetCurrency by remember { mutableStateOf("") }
     var rateInput by remember { mutableStateOf("") }
@@ -110,21 +109,22 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // SE9: mapa de divisas con nombres
-    val currencyOptions = remember {
-        listOf(
-            "MXN" to "Peso mexicano",
-            "USD" to "Dólar estadounidense",
-            "EUR" to "Euro",
-            "CAD" to "Dólar canadiense",
-            "GBP" to "Libra esterlina"
-        )
-    }
+    val successConvertText = stringResource(R.string.settings_convert_success)
+    val noConvertSuccessText = stringResource(R.string.settings_convert_no_convert_success)
+
+    // CORRECCIÓN: Mapeamos los códigos con sus nombres traducidos
+    val currencyOptions = listOf(
+        "MXN" to stringResource(R.string.currency_mxn),
+        "USD" to stringResource(R.string.currency_usd),
+        "EUR" to stringResource(R.string.currency_eur),
+        "CAD" to stringResource(R.string.currency_cad),
+        "GBP" to stringResource(R.string.currency_gbp)
+    )
 
     if (showConversionDialog) {
         AlertDialog(
             onDismissRequest = { showConversionDialog = false },
-            title = { Text("Cambiar divisa a $targetCurrency") },
+            title = { Text(stringResource(R.string.settings_convert_title, targetCurrency)) },
             text = {
                 Column {
                     Text(ratePrompt)
@@ -132,13 +132,13 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = rateInput,
                         onValueChange = { rateInput = it },
-                        label = { Text("Tasa de cambio") },
+                        label = { Text(stringResource(R.string.settings_convert_rate)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Todos los gastos históricos de este vehículo se convertirán a la nueva moneda.",
+                        stringResource(R.string.settings_convert_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -149,16 +149,12 @@ fun SettingsScreen(
                         onClick = {
                             showConversionDialog = false
                             vm.convertCurrency(targetCurrency, 1.0) {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        "Divisa cambiada a $targetCurrency (montos sin convertir)"
-                                    )
-                                }
+                                scope.launch { snackbarHostState.showSnackbar(noConvertSuccessText) }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("No convertir, solo cambiar etiqueta")
+                        Text(stringResource(R.string.settings_convert_no_convert))
                     }
                 }
             },
@@ -169,18 +165,14 @@ fun SettingsScreen(
                         if (rate != null && rate > 0) {
                             showConversionDialog = false
                             vm.convertCurrency(targetCurrency, rate) {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        "Divisa convertida a $targetCurrency"
-                                    )
-                                }
+                                scope.launch { snackbarHostState.showSnackbar(successConvertText) }
                             }
                         }
                     }
-                ) { Text("Aceptar") }
+                ) { Text(stringResource(R.string.action_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showConversionDialog = false }) { Text("Cancelar") }
+                TextButton(onClick = { showConversionDialog = false }) { Text(stringResource(R.string.action_cancel)) }
             }
         )
     }
@@ -192,10 +184,7 @@ fun SettingsScreen(
                 title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back)
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -209,7 +198,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // --- APARIENCIA ---
+            // APARIENCIA
             Text(
                 stringResource(R.string.settings_appearance),
                 style = MaterialTheme.typography.titleMedium,
@@ -218,7 +207,7 @@ fun SettingsScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -248,11 +237,10 @@ fun SettingsScreen(
                 }
             }
 
-            // --- REGIÓN Y UNIDADES ---
-            Text("Región y Unidades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
+            // REGIÓN Y UNIDADES
+            Text(stringResource(R.string.settings_region_units), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                text = "Valores predeterminados para autos nuevos. Si hay un auto activo, se aplicará a él.",
+                text = stringResource(R.string.settings_region_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, start = 4.dp, bottom = 4.dp)
@@ -272,7 +260,7 @@ fun SettingsScreen(
                             value = currentOption?.let { "${it.first} · ${it.second}" } ?: currency,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Divisa") },
+                            label = { Text(stringResource(R.string.settings_currency)) },
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCurrencyMenu)
                             },
@@ -282,6 +270,7 @@ fun SettingsScreen(
                             expanded = showCurrencyMenu,
                             onDismissRequest = { showCurrencyMenu = false }
                         ) {
+                            // CORRECCIÓN: Ahora iteramos sobre la lista traducida
                             currencyOptions.forEach { (code, name) ->
                                 DropdownMenuItem(
                                     text = { Text("$code · $name") },
@@ -307,21 +296,21 @@ fun SettingsScreen(
                         }
                     }
 
-                    Text("Sistema de unidades", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.settings_units), style = MaterialTheme.typography.bodyLarge)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ThemeChip(
                             icon = Icons.Default.Info,
-                            label = "Métrico (km/L)",
+                            label = stringResource(R.string.settings_metric),
                             selected = units == UnitSystem.METRIC,
                             onClick = { vm.setUnitSystem(UnitSystem.METRIC) },
                             modifier = Modifier.weight(1f)
                         )
                         ThemeChip(
                             icon = Icons.Default.Info,
-                            label = "Imperial (mi/gal)",
+                            label = stringResource(R.string.settings_imperial),
                             selected = units == UnitSystem.US,
                             onClick = { vm.setUnitSystem(UnitSystem.US) },
                             modifier = Modifier.weight(1f)
@@ -330,7 +319,7 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SUSCRIPCIÓN ---
+            // SUSCRIPCIÓN
             Text(
                 stringResource(R.string.settings_subscription),
                 style = MaterialTheme.typography.titleMedium,
@@ -363,7 +352,7 @@ fun SettingsScreen(
                 }
             }
 
-            // --- INFORMACIÓN ---
+            // INFORMACIÓN
             Text(
                 stringResource(R.string.settings_info),
                 style = MaterialTheme.typography.titleMedium,
@@ -398,7 +387,6 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    // SE6: Versión dinámica
                     Text(
                         stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
                         style = MaterialTheme.typography.bodySmall,

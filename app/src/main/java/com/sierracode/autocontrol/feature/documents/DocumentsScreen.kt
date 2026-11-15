@@ -77,15 +77,15 @@ fun DocumentsScreen(
     if (docToDelete != null) {
         AlertDialog(
             onDismissRequest = { docToDelete = null },
-            title = { Text("Eliminar documento") },
-            text = { Text("¿Estás seguro que deseas eliminar '${docToDelete!!.name}'?") },
+            title = { Text(stringResource(R.string.docs_delete_title)) },
+            text = { Text(stringResource(R.string.docs_delete_desc, docToDelete!!.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteDocument(docToDelete!!.id)
                     docToDelete = null
-                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { docToDelete = null }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { docToDelete = null }) { Text(stringResource(R.string.action_cancel)) } }
         )
     }
 
@@ -107,12 +107,12 @@ fun DocumentsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddClick) { Icon(Icons.Default.Add, "Agregar") }
+            FloatingActionButton(onClick = onAddClick) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.docs_add)) }
         }
     ) { padding ->
         if (docs.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No hay documentos registrados.")
+                Text(stringResource(R.string.docs_empty))
             }
         } else {
             LazyColumn(
@@ -131,17 +131,17 @@ fun DocumentsScreen(
                         DocumentStatus.EXPIRED -> {
                             variant = StatusVariant.ERROR
                             statusIcon = Icons.Default.Warning
-                            statusText = "Venció hace ${-eval.daysRemaining} días"
+                            statusText = stringResource(R.string.docs_expired, -eval.daysRemaining)
                         }
                         DocumentStatus.EXPIRING_SOON -> {
                             variant = StatusVariant.WARNING
                             statusIcon = Icons.Default.Info
-                            statusText = "Vence en ${eval.daysRemaining} días"
+                            statusText = stringResource(R.string.docs_expiring, eval.daysRemaining)
                         }
                         DocumentStatus.VALID -> {
                             variant = StatusVariant.OK
                             statusIcon = Icons.Default.CheckCircle
-                            statusText = "Vigente"
+                            statusText = stringResource(R.string.docs_valid)
                         }
                     }
 
@@ -162,20 +162,20 @@ fun DocumentsScreen(
         AlertDialog(
             onDismissRequest = { docMenuTarget = null },
             title = { Text(docMenuTarget!!.name) },
-            text = { Text("¿Qué deseas hacer con este documento?") },
+            text = { Text(stringResource(R.string.docs_menu_title)) },
             confirmButton = {
                 TextButton(onClick = {
                     onEditClick(docMenuTarget!!.id)
                     docMenuTarget = null
-                }) { Text("Editar") }
+                }) { Text(stringResource(R.string.action_edit)) }
             },
             dismissButton = {
                 Row {
                     TextButton(onClick = {
                         docToDelete = docMenuTarget
                         docMenuTarget = null
-                    }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = { docMenuTarget = null }) { Text("Cancelar") }
+                    }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { docMenuTarget = null }) { Text(stringResource(R.string.action_cancel)) }
                 }
             }
         )
@@ -209,7 +209,7 @@ fun DocumentCard(
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Vence: ${formatDate(doc.expiryDateEpochDay)}",
+                stringResource(R.string.docs_expiry_date_label, formatDate(doc.expiryDateEpochDay)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
