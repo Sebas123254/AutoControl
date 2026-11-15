@@ -31,6 +31,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
@@ -38,110 +39,133 @@ import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
 import com.sierracode.autocontrol.data.repository.DocumentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
 class DocumentEditViewModel @Inject constructor(
     private val repo: DocumentRepository,
-    savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
     private val documentId: String? = savedStateHandle.get<String>("documentId")?.takeIf { it.isNotBlank() }
 
-    var name by mutableStateOf("")
-    var type by mutableStateOf("")
-    var issueDate by mutableStateOf<LocalDate?>(null)
-    var expiryDate by mutableStateOf<LocalDate?>(null)
-    var leadDays by mutableStateOf("30")
-    var notes by mutableStateOf("")
-    var existingFileUri by mutableStateOf<String?>(null)
-    var selectedFileUri by mutableStateOf<Uri?>(null)
+    val name: StateFlow<String> = savedStateHandle.getStateFlow("name", "")
+    val type: StateFlow<String> = savedStateHandle.getStateFlow("type", "")
+    val leadDays: StateFlow<String> = savedStateHandle.getStateFlow("leadDays", "30")
+    val notes: StateFlow<String> = savedStateHandle.getStateFlow("notes", "")
+    val existingFileUri: StateFlow<String?> = savedStateHandle.getStateFlow("existingFileUri", null)
+
+    val selectedFileUri: StateFlow<Uri?> = savedStateHandle
+        .getStateFlow<String?>("selectedFileUriString", null)
+        .map { it?.let { Uri.parse(it) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val issueDate: StateFlow<LocalDate?> = savedStateHandle
+        .getStateFlow<Long?>("issueDateEpochDay", null)
+        .map { it?.let { LocalDate.ofEpochDay(it) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val expiryDate: StateFlow<LocalDate?> = savedStateHandle
+        .getStateFlow<Long?>("expiryDateEpochDay", null)
+        .map { it?.let { LocalDate.ofEpochDay(it) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val hasUnsavedChanges: StateFlow<Boolean> = savedStateHandle.getStateFlow("hasUnsavedChanges", false)
 
     var isLoading by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
-
-    var hasUnsavedChanges by mutableStateOf(false)
         private set
 
-    fun updateName(newName: String) { name = newName; hasUnsavedChanges = true; error = null }
-    fun updateType(newType: String) { type = newType; hasUnsavedChanges = true; error = null }
-    fun updateIssueDate(newDate: LocalDate?) { issueDate = newDate; hasUnsavedChanges = true; error = null }
-    fun updateExpiryDate(newDate: LocalDate?) { expiryDate = newDate; hasUnsavedChanges = true; error = null }
-    fun updateLeadDays(newDays: String) { leadDays = newDays; hasUnsavedChanges = true; error = null }
-    fun updateNotes(newNotes: String) { notes = newNotes; hasUnsavedChanges = true }
-    fun updateFileUri(newUri: Uri?) { selectedFileUri = newUri; hasUnsavedChanges = true }
-
     init {
-        if (documentId != null) {
+        if (documentId != null && !savedStateHandle.contains("loadedFromDb")) {
             viewModelScope.launch {
                 repo.get(documentId)?.let { doc ->
-                    name = doc.name
-                    type = doc.type
-                    issueDate = doc.issueDateEpochDay?.let { LocalDate.ofEpochDay(it) }
-                    expiryDate = doc.expiryDateEpochDay?.let { LocalDate.ofEpochDay(it) }
-                    leadDays = doc.reminderLeadDays.toString()
-                    notes = doc.notes ?: ""
-                    existingFileUri = doc.fileUri
+                    savedStateHandle["name"] = doc.name
+                    savedStateHandle["type"] = doc.type
+                    savedStateHandle["issueDateEpochDay"] = doc.issueDateEpochDay
+                    savedStateHandle["expiryDateEpochDay"] = doc.expiryDateEpochDay
+                    savedStateHandle["leadDays"] = doc.reminderLeadDays.toString()
+                    savedStateHandle["notes"] = doc.notes ?: ""
+                    savedStateHandle["existingFileUri"] = doc.fileUri
                 }
+                savedStateHandle["loadedFromDb"] = true
             }
         }
     }
 
+    fun updateName(v: String) { savedStateHandle["name"] = v; markDirty(); error = null }
+    fun updateType(v: String) { savedStateHandle["type"] = v; markDirty(); error = null }
+    fun updateIssueDate(d: LocalDate?) { savedStateHandle["issueDateEpochDay"] = d?.toEpochDay(); markDirty(); error = null }
+    fun updateExpiryDate(d: LocalDate?) { savedStateHandle["expiryDateEpochDay"] = d?.toEpochDay(); markDirty(); error = null }
+    fun updateLeadDays(v: String) { savedStateHandle["leadDays"] = v; markDirty(); error = null }
+    fun updateNotes(v: String) { savedStateHandle["notes"] = v; markDirty() }
+    fun updateFileUri(uri: Uri?) { savedStateHandle["selectedFileUriString"] = uri?.toString(); markDirty() }
+    private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
+
     fun save(context: android.content.Context, onDone: () -> Unit) {
-        if (name.isBlank() || expiryDate == null) {
-            error = context.getString(R.string.doc_edit_err_required)
-            return
+        val currentName = name.value
+        val currentType = type.value
+        val currentExpiry = expiryDate.value
+        val currentIssue = issueDate.value
+
+        if (currentName.isBlank() || currentExpiry == null) {
+            error = context.getString(R.string.doc_edit_err_required); return
         }
-        if (type.isBlank()) {
-            error = context.getString(R.string.doc_edit_err_type)
-            return
+        if (currentType.isBlank()) {
+            error = context.getString(R.string.doc_edit_err_type); return
         }
 
-        val leadDaysInt = leadDays.toIntOrNull() ?: 30
+        val leadDaysInt = leadDays.value.toIntOrNull() ?: 30
         if (leadDaysInt < 1 || leadDaysInt > 90) {
-            error = context.getString(R.string.doc_edit_err_days)
-            return
+            error = context.getString(R.string.doc_edit_err_days); return
         }
 
-        if (issueDate != null && expiryDate!!.isBefore(issueDate)) {
-            error = context.getString(R.string.doc_edit_err_date)
-            return
+        if (currentIssue != null && currentExpiry.isBefore(currentIssue)) {
+            error = context.getString(R.string.doc_edit_err_date); return
         }
+
+        val currentSelectedFileUri = selectedFileUri.value
+        val currentExistingFileUri = existingFileUri.value
 
         viewModelScope.launch {
             isLoading = true
             try {
-                var finalFileUri = existingFileUri
+                var finalFileUri = currentExistingFileUri
 
-                if (selectedFileUri != null) {
-                    val mimeType = context.contentResolver.getType(selectedFileUri!!)
-                    ImageUtils.deleteLocalFile(existingFileUri)
+                if (currentSelectedFileUri != null) {
+                    val mimeType = context.contentResolver.getType(currentSelectedFileUri)
+                    ImageUtils.deleteLocalFile(currentExistingFileUri)
                     if (mimeType == "application/pdf") {
-                        finalFileUri = ImageUtils.copyToInternalStorage(context, selectedFileUri!!, "pdf")?.toString()
+                        finalFileUri = ImageUtils.copyToInternalStorage(context, currentSelectedFileUri, "pdf")?.toString()
                     } else {
-                        finalFileUri = ImageUtils.compressAndSave(context, selectedFileUri!!)?.toString()
+                        finalFileUri = ImageUtils.compressAndSave(context, currentSelectedFileUri)?.toString()
                     }
                 }
 
                 val doc = DocumentEntity(
                     id = documentId ?: UUID.randomUUID().toString(),
                     vehicleId = vehicleId,
-                    type = type,
-                    name = name,
-                    issueDateEpochDay = issueDate?.toEpochDay(),
-                    expiryDateEpochDay = expiryDate!!.toEpochDay(),
+                    type = currentType,
+                    name = currentName,
+                    issueDateEpochDay = currentIssue?.toEpochDay(),
+                    expiryDateEpochDay = currentExpiry.toEpochDay(),
                     reminderLeadDays = leadDaysInt,
                     fileUri = finalFileUri,
-                    notes = notes.takeIf { it.isNotBlank() }
+                    notes = notes.value.takeIf { it.isNotBlank() }
                 )
                 repo.save(doc)
 
-                hasUnsavedChanges = false
+                savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
@@ -160,6 +184,17 @@ fun DocumentEditScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+
+    val name by vm.name.collectAsStateWithLifecycle()
+    val type by vm.type.collectAsStateWithLifecycle()
+    val leadDays by vm.leadDays.collectAsStateWithLifecycle()
+    val notes by vm.notes.collectAsStateWithLifecycle()
+    val existingFileUri by vm.existingFileUri.collectAsStateWithLifecycle()
+    val selectedFileUri by vm.selectedFileUri.collectAsStateWithLifecycle()
+    val issueDate by vm.issueDate.collectAsStateWithLifecycle()
+    val expiryDate by vm.expiryDate.collectAsStateWithLifecycle()
+    val hasUnsavedChanges by vm.hasUnsavedChanges.collectAsStateWithLifecycle()
+
     var showExpiryPicker by remember { mutableStateOf(false) }
     var showIssuePicker by remember { mutableStateOf(false) }
     var expandedType by remember { mutableStateOf(false) }
@@ -169,7 +204,7 @@ fun DocumentEditScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { vm.save(context, onDone) }
 
-    BackHandler(enabled = vm.hasUnsavedChanges) { showDiscardDialog = true }
+    BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -181,7 +216,9 @@ fun DocumentEditScreen(
                     Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) } }
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
         )
     }
 
@@ -194,7 +231,7 @@ fun DocumentEditScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.doc_edit_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
+                    IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
                     }
                 }
@@ -202,11 +239,16 @@ fun DocumentEditScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(
-                value = vm.name,
+                value = name,
                 onValueChange = { vm.updateName(it) },
                 label = { Text(stringResource(R.string.doc_edit_name_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -216,7 +258,7 @@ fun DocumentEditScreen(
 
             ExposedDropdownMenuBox(expanded = expandedType, onExpandedChange = { expandedType = !expandedType }) {
                 OutlinedTextField(
-                    value = if (vm.type.isBlank()) "" else vm.type,
+                    value = if (type.isBlank()) "" else type,
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.doc_edit_type_label)) },
@@ -238,10 +280,9 @@ fun DocumentEditScreen(
                 }
             }
 
-            // Fecha Expedición
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = vm.issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                    value = issueDate?.let { formatDate(it.toEpochDay()) } ?: "",
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
@@ -261,24 +302,29 @@ fun DocumentEditScreen(
             }
 
             if (showIssuePicker) {
-                val initialMillis = vm.issueDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+                // Fix: UTC end-to-end.
+                val initialMillis = (issueDate ?: LocalDate.now())
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showIssuePicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
+                            state.selectedDateMillis?.let { millis ->
+                                vm.updateIssueDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                            }
                             showIssuePicker = false
                         }) { Text(stringResource(R.string.action_ok)) }
                     },
-                    dismissButton = { TextButton(onClick = { showIssuePicker = false }) { Text(stringResource(R.string.action_cancel)) } }
+                    dismissButton = {
+                        TextButton(onClick = { showIssuePicker = false }) { Text(stringResource(R.string.action_cancel)) }
+                    }
                 ) { DatePicker(state = state) }
             }
 
-            // Fecha Vencimiento
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = vm.expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                    value = expiryDate?.let { formatDate(it.toEpochDay()) } ?: "",
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
@@ -298,22 +344,28 @@ fun DocumentEditScreen(
             }
 
             if (showExpiryPicker) {
-                val initialMillis = vm.expiryDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
+                // Fix: UTC end-to-end.
+                val initialMillis = (expiryDate ?: LocalDate.now())
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showExpiryPicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) }
+                            state.selectedDateMillis?.let { millis ->
+                                vm.updateExpiryDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                            }
                             showExpiryPicker = false
                         }) { Text(stringResource(R.string.action_ok)) }
                     },
-                    dismissButton = { TextButton(onClick = { showExpiryPicker = false }) { Text(stringResource(R.string.action_cancel)) } }
+                    dismissButton = {
+                        TextButton(onClick = { showExpiryPicker = false }) { Text(stringResource(R.string.action_cancel)) }
+                    }
                 ) { DatePicker(state = state) }
             }
 
             OutlinedTextField(
-                value = vm.leadDays,
+                value = leadDays,
                 onValueChange = { vm.updateLeadDays(it) },
                 label = { Text(stringResource(R.string.doc_edit_lead_days_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
@@ -323,22 +375,26 @@ fun DocumentEditScreen(
 
             OutlinedButton(
                 onClick = { filePicker.launch(arrayOf("image/*", "application/pdf")) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
             ) {
                 Icon(Icons.Default.AttachFile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    if (vm.selectedFileUri != null || vm.existingFileUri != null) stringResource(R.string.doc_edit_change_file)
+                    if (selectedFileUri != null || existingFileUri != null) stringResource(R.string.doc_edit_change_file)
                     else stringResource(R.string.doc_edit_attach_file)
                 )
             }
 
-            if (vm.selectedFileUri != null || vm.existingFileUri != null) {
-                Text(stringResource(R.string.doc_edit_file_selected), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            if (selectedFileUri != null || existingFileUri != null) {
+                Text(
+                    stringResource(R.string.doc_edit_file_selected),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
 
             OutlinedTextField(
-                value = vm.notes,
+                value = notes,
                 onValueChange = { vm.updateNotes(it) },
                 label = { Text(stringResource(R.string.field_notes)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -352,14 +408,15 @@ fun DocumentEditScreen(
                 onClick = {
                     val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-                            vm.expiryDate != null
+                            expiryDate != null
                     if (needsPermission) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     else vm.save(context, onDone)
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 enabled = !vm.isLoading
             ) {
-                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp)) else Text(stringResource(R.string.action_save))
+                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp))
+                else Text(stringResource(R.string.action_save))
             }
         }
     }

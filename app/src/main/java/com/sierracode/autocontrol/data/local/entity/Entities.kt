@@ -151,11 +151,17 @@ data class ReminderEntity(
     val vehicleId: String,
     val sourceType: String,
     val sourceId: String,
+    /** Fallback textual. Se usa si templateKey/templateArgs no resuelven. */
     val title: String,
+    /** Fallback textual. Se usa si templateKey/templateArgs no resuelven. */
     val body: String,
     val triggerAtEpochMillis: Long,
     val enabled: Boolean = true,
-    val lastNotifiedAt: Long? = null
+    val lastNotifiedAt: Long? = null,
+    /** Identificador del template: "document_expiring", "maintenance_due", etc. */
+    val templateKey: String? = null,
+    /** JSON serializado con los args del template. Ej: {"documentName":"Póliza"} */
+    val templateArgs: String? = null
 )
 
 @Entity(

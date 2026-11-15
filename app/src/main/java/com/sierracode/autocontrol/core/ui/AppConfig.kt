@@ -8,7 +8,8 @@ data class AppConfig(
     val currencyCode: String = "MXN",
     val unitSystem: UnitSystem = UnitSystem.METRIC,
     val efficiencyFormat: EfficiencyFormat = EfficiencyFormat.KM_PER_L,
-    val isPro: Boolean = false // <-- NUEVO: Estado global de PRO
+    val isPro: Boolean = false,
+    val dynamicColor: Boolean = false
 )
 
 val LocalAppConfig = staticCompositionLocalOf { AppConfig() }

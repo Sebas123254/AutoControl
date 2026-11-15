@@ -22,11 +22,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.format.localizedPriority
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
@@ -34,11 +36,14 @@ import com.sierracode.autocontrol.data.repository.CategoryRepository
 import com.sierracode.autocontrol.data.repository.GoalRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
 import javax.inject.Inject
 
@@ -46,67 +51,81 @@ import javax.inject.Inject
 class GoalEditViewModel @Inject constructor(
     private val goalRepo: GoalRepository,
     categoryRepo: CategoryRepository,
-    savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
     private val goalId: String? = savedStateHandle.get<String>("goalId")?.takeIf { it.isNotBlank() }
 
-    val categories = categoryRepo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val categories: StateFlow<List<CategoryEntity>> = categoryRepo.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    var title by mutableStateOf("")
-    var amount by mutableStateOf("")
-    var maxAmount by mutableStateOf("")
-    var priority by mutableStateOf("MEDIA")
-    var targetDate by mutableStateOf<LocalDate?>(null)
-    var selectedCategory by mutableStateOf<CategoryEntity?>(null)
-    var notes by mutableStateOf("")
+    val title: StateFlow<String> = savedStateHandle.getStateFlow("title", "")
+    val amount: StateFlow<String> = savedStateHandle.getStateFlow("amount", "")
+    val maxAmount: StateFlow<String> = savedStateHandle.getStateFlow("maxAmount", "")
+    val priority: StateFlow<String> = savedStateHandle.getStateFlow("priority", "MEDIA")
+    val notes: StateFlow<String> = savedStateHandle.getStateFlow("notes", "")
+    val hasUnsavedChanges: StateFlow<Boolean> = savedStateHandle.getStateFlow("hasUnsavedChanges", false)
 
-    var hasUnsavedChanges by mutableStateOf(false)
-        private set
+    val targetDate: StateFlow<LocalDate?> = savedStateHandle
+        .getStateFlow<Long?>("targetDateEpochDay", null)
+        .map { it?.let { LocalDate.ofEpochDay(it) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val selectedCategoryId: StateFlow<String?> = savedStateHandle.getStateFlow("categoryId", null)
+    val selectedCategory: StateFlow<CategoryEntity?> = combine(selectedCategoryId, categories) { id, cats ->
+        cats.find { it.id == id }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     var isLoading by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
-
-    fun updateTitle(newTitle: String) { title = newTitle; hasUnsavedChanges = true; error = null }
-    fun updateAmount(newAmount: String) { amount = newAmount; hasUnsavedChanges = true; error = null }
-    fun updateMaxAmount(newMax: String) { maxAmount = newMax; hasUnsavedChanges = true; error = null }
-    fun updatePriority(newPriority: String) { priority = newPriority; hasUnsavedChanges = true }
-    fun updateTargetDate(newDate: LocalDate?) { targetDate = newDate; hasUnsavedChanges = true }
-    fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
-    fun updateNotes(newNotes: String) { notes = newNotes; hasUnsavedChanges = true }
+        private set
 
     init {
-        if (goalId != null) {
+        if (goalId != null && !savedStateHandle.contains("loadedFromDb")) {
             viewModelScope.launch {
                 goalRepo.get(goalId)?.let { goal ->
-                    title = goal.title
-                    amount = (goal.estimatedCents / 100.0).toString()
-                    maxAmount = goal.estimatedMaxCents?.let { (it / 100.0).toString() } ?: ""
-                    priority = goal.priority
-                    targetDate = goal.targetDateEpochDay?.let { LocalDate.ofEpochDay(it) }
-                    notes = goal.notes ?: ""
-                    selectedCategory = categories.value.find { it.id == goal.categoryId }
+                    savedStateHandle["title"] = goal.title
+                    savedStateHandle["amount"] = (goal.estimatedCents / 100.0).toString()
+                    savedStateHandle["maxAmount"] = goal.estimatedMaxCents?.let { (it / 100.0).toString() } ?: ""
+                    savedStateHandle["priority"] = goal.priority
+                    savedStateHandle["targetDateEpochDay"] = goal.targetDateEpochDay
+                    savedStateHandle["notes"] = goal.notes ?: ""
+                    savedStateHandle["categoryId"] = goal.categoryId
                 }
+                savedStateHandle["loadedFromDb"] = true
             }
         }
     }
 
-    fun save(context: android.content.Context, onDone: () -> Unit) {
-        val est = amount.toBigDecimalOrNull()?.movePointRight(2)?.toLong() ?: 0L
-        val max = maxAmount.toBigDecimalOrNull()?.movePointRight(2)?.toLong()
+    fun updateTitle(v: String) { savedStateHandle["title"] = v; markDirty(); error = null }
+    fun updateAmount(v: String) { savedStateHandle["amount"] = v; markDirty(); error = null }
+    fun updateMaxAmount(v: String) { savedStateHandle["maxAmount"] = v; markDirty(); error = null }
+    fun updatePriority(v: String) { savedStateHandle["priority"] = v; markDirty() }
+    fun updateTargetDate(d: LocalDate?) { savedStateHandle["targetDateEpochDay"] = d?.toEpochDay(); markDirty() }
+    fun updateCategory(cat: CategoryEntity) { savedStateHandle["categoryId"] = cat.id; markDirty() }
+    fun updateNotes(v: String) { savedStateHandle["notes"] = v; markDirty() }
+    private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
 
-        if (title.isBlank() || est <= 0) {
-            error = context.getString(R.string.goal_err_valid)
-            return
+    fun save(context: android.content.Context, onDone: () -> Unit) {
+        val currentTitle = title.value
+        val est = amount.value.toBigDecimalOrNull()?.movePointRight(2)?.toLong() ?: 0L
+        val max = maxAmount.value.toBigDecimalOrNull()?.movePointRight(2)?.toLong()
+
+        if (currentTitle.isBlank() || est <= 0) {
+            error = context.getString(R.string.goal_err_valid); return
         }
         if (est < 0 || (max != null && max < 0)) {
-            error = context.getString(R.string.goal_err_negative)
-            return
+            error = context.getString(R.string.goal_err_negative); return
         }
         if (max != null && max < est) {
-            error = context.getString(R.string.goal_err_max)
-            return
+            error = context.getString(R.string.goal_err_max); return
         }
+
+        val currentPriority = priority.value
+        val currentCategoryId = selectedCategory.value?.id
+        val currentNotes = notes.value
+        val currentTargetDate = targetDate.value
 
         viewModelScope.launch {
             isLoading = true
@@ -115,20 +134,20 @@ class GoalEditViewModel @Inject constructor(
                 val goal = GoalEntity(
                     id = goalId ?: UUID.randomUUID().toString(),
                     vehicleId = vehicleId,
-                    title = title,
+                    title = currentTitle,
                     estimatedCents = est,
                     estimatedMaxCents = max,
-                    priority = priority,
-                    targetDateEpochDay = targetDate?.toEpochDay(),
+                    priority = currentPriority,
+                    targetDateEpochDay = currentTargetDate?.toEpochDay(),
                     status = existing?.status ?: "PENDIENTE",
-                    categoryId = selectedCategory?.id,
-                    notes = notes.takeIf { it.isNotBlank() },
+                    categoryId = currentCategoryId,
+                    notes = currentNotes.takeIf { it.isNotBlank() },
                     createdAt = existing?.createdAt ?: System.currentTimeMillis(),
                     linkedExpenseId = existing?.linkedExpenseId
                 )
                 goalRepo.save(goal)
 
-                hasUnsavedChanges = false
+                savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
@@ -142,7 +161,18 @@ class GoalEditViewModel @Inject constructor(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) {
-    val cats by vm.categories.collectAsState()
+    val config = LocalAppConfig.current
+    val cats by vm.categories.collectAsStateWithLifecycle()
+
+    val title by vm.title.collectAsStateWithLifecycle()
+    val amount by vm.amount.collectAsStateWithLifecycle()
+    val maxAmount by vm.maxAmount.collectAsStateWithLifecycle()
+    val priority by vm.priority.collectAsStateWithLifecycle()
+    val notes by vm.notes.collectAsStateWithLifecycle()
+    val targetDate by vm.targetDate.collectAsStateWithLifecycle()
+    val selectedCategory by vm.selectedCategory.collectAsStateWithLifecycle()
+    val hasUnsavedChanges by vm.hasUnsavedChanges.collectAsStateWithLifecycle()
+
     var showDatePicker by remember { mutableStateOf(false) }
     var expandedCat by remember { mutableStateOf(false) }
     var expandedPrio by remember { mutableStateOf(false) }
@@ -150,7 +180,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
-    BackHandler(enabled = vm.hasUnsavedChanges) { showDiscardDialog = true }
+    BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -162,7 +192,9 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                     Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) } }
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
+            }
         )
     }
 
@@ -171,7 +203,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
             TopAppBar(
                 title = { Text(stringResource(R.string.goals_edit_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
+                    IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
@@ -179,11 +211,16 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
         }
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(
-                value = vm.title,
+                value = title,
                 onValueChange = { vm.updateTitle(it) },
                 label = { Text(stringResource(R.string.goals_field_title)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -192,24 +229,24 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
             )
 
             CurrencyField(
-                value = vm.amount,
+                value = amount,
                 onValueChange = { vm.updateAmount(it) },
                 label = stringResource(R.string.goals_field_amount),
-                currencyCode = "MXN",
+                currencyCode = config.currencyCode,
                 modifier = Modifier.fillMaxWidth()
             )
 
             CurrencyField(
-                value = vm.maxAmount,
+                value = maxAmount,
                 onValueChange = { vm.updateMaxAmount(it) },
                 label = stringResource(R.string.goals_field_max),
-                currencyCode = "MXN",
+                currencyCode = config.currencyCode,
                 modifier = Modifier.fillMaxWidth()
             )
 
             ExposedDropdownMenuBox(expanded = expandedPrio, onExpandedChange = { expandedPrio = !expandedPrio }) {
                 OutlinedTextField(
-                    value = localizedPriority(vm.priority),
+                    value = localizedPriority(priority),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.goals_field_priority)) },
@@ -228,7 +265,8 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
 
             ExposedDropdownMenuBox(expanded = expandedCat, onExpandedChange = { expandedCat = !expandedCat }) {
                 OutlinedTextField(
-                    value = vm.selectedCategory?.let { localizedCategoryName(it.id, it.name) } ?: stringResource(R.string.expense_edit_select_category),
+                    value = selectedCategory?.let { localizedCategoryName(it.id, it.name) }
+                        ?: stringResource(R.string.expense_edit_select_category),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.goals_field_category)) },
@@ -247,29 +285,38 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
 
             Box(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = vm.targetDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                    onValueChange = {}, readOnly = true, label = { Text(stringResource(R.string.goals_field_date)) },
+                    value = targetDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.goals_field_date)) },
                     trailingIcon = { Icon(Icons.Default.DateRange, null) },
                     modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }
                 )
             }
 
             if (showDatePicker) {
-                val state = rememberDatePickerState(initialSelectedDateMillis = vm.targetDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli())
+                // Fix: UTC end-to-end.
+                val initialMillis = (targetDate ?: LocalDate.now())
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+                val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
                 DatePickerDialog(
                     onDismissRequest = { showDatePicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { vm.updateTargetDate(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()) };
+                            state.selectedDateMillis?.let { millis ->
+                                vm.updateTargetDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                            }
                             showDatePicker = false
                         }) { Text(stringResource(R.string.action_ok)) }
                     },
-                    dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) } }
+                    dismissButton = {
+                        TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) }
+                    }
                 ) { DatePicker(state = state) }
             }
 
             OutlinedTextField(
-                value = vm.notes,
+                value = notes,
                 onValueChange = { vm.updateNotes(it) },
                 label = { Text(stringResource(R.string.goals_field_notes)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -279,8 +326,13 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
 
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-            Button(onClick = { vm.save(context, onDone) }, modifier = Modifier.fillMaxWidth().height(50.dp), enabled = !vm.isLoading) {
-                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp)) else Text(stringResource(R.string.goals_save))
+            Button(
+                onClick = { vm.save(context, onDone) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                enabled = !vm.isLoading
+            ) {
+                if (vm.isLoading) CircularProgressIndicator(Modifier.size(24.dp))
+                else Text(stringResource(R.string.goals_save))
             }
         }
     }

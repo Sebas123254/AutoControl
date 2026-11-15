@@ -32,9 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.data.repository.CategoryRepository
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
@@ -55,7 +57,12 @@ import javax.inject.Inject
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-data class CategoryStat(val name: String, val totalCents: Long, val percentage: Float)
+data class CategoryStat(
+    val categoryId: String,
+    val fallbackName: String?,
+    val totalCents: Long,
+    val percentage: Float
+)
 data class MonthlyStat(val monthLabel: String, val totalCents: Long)
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -68,7 +75,7 @@ class StatsViewModel @Inject constructor(
 
     val monthlyStats = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else expenseRepo.observeByVehicle(id).map { expenses ->
-            val formatter = DateTimeFormatter.ofPattern("MMM yy", Locale("es", "MX"))
+            val formatter = DateTimeFormatter.ofPattern("MMM yy", Locale.getDefault())
             expenses.groupBy {
                 YearMonth.from(LocalDate.ofEpochDay(it.dateEpochDay))
             }.toSortedMap().map { (yearMonth, list) ->
@@ -90,9 +97,10 @@ class StatsViewModel @Inject constructor(
         if (grandTotal == 0L) return@combine emptyList()
 
         totals.mapNotNull { row ->
-            val catName = categories.find { it.id == row.categoryId }?.name ?: "Otros"
+            val catName = categories.find { it.id == row.categoryId }?.name
             CategoryStat(
-                name = catName,
+                categoryId = row.categoryId,
+                fallbackName = catName,
                 totalCents = row.totalCents,
                 percentage = (row.totalCents.toFloat() / grandTotal.toFloat()) * 100f
             )
@@ -114,8 +122,8 @@ fun StatsScreen(
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
-    val monthlyStats by vm.monthlyStats.collectAsState()
-    val categoryStats by vm.categoryStats.collectAsState()
+    val monthlyStats by vm.monthlyStats.collectAsStateWithLifecycle()
+    val categoryStats by vm.categoryStats.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -204,7 +212,7 @@ fun StatsScreen(
                         )
                     }
 
-                    items(categoryStats) { stat ->
+                    items(categoryStats, key = { it.categoryId }) { stat ->
                         StatBar(stat = stat)
                     }
                 }
@@ -231,7 +239,6 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
 
     val formattedAmounts = data.map { formatMoneyCents(it.totalCents) }
 
-    // ACCESIBILIDAD: Construimos un texto descriptivo para TalkBack
     val chartDescriptionPrefix = stringResource(R.string.stats_chart_desc)
     val chartDescription = remember(data, chartDescriptionPrefix) {
         buildString {
@@ -247,7 +254,7 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
             .fillMaxWidth()
             .height(240.dp)
             .padding(top = 16.dp, end = 32.dp, start = 48.dp, bottom = 32.dp)
-            .semantics { contentDescription = chartDescription } // <-- Semántica para TalkBack
+            .semantics { contentDescription = chartDescription }
             .pointerInput(data) {
                 detectTapGestures { offset ->
                     val stepX = if (data.size > 1) size.width / (data.size - 1) else size.width
@@ -260,7 +267,6 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
         val height = size.height
         val stepX = if (data.size > 1) width / (data.size - 1) else width
 
-        // Dibujar líneas de fondo (Eje Y)
         val ySteps = 4
         for (i in 0..ySteps) {
             val y = height - (height * i / ySteps)
@@ -303,7 +309,6 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
             drawCircle(color = lineColor, radius = 8f, center = point)
             drawCircle(color = dotInnerColor, radius = 4f, center = point)
 
-            // Etiquetas X
             drawText(
                 textMeasurer = textMeasurer,
                 text = data[index].monthLabel,
@@ -311,7 +316,6 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
                 style = TextStyle(color = textColor, fontSize = 10.sp)
             )
 
-            // Tooltip
             if (selectedIndex == index) {
                 val tooltipText = formattedAmounts[index]
                 val textLayoutResult = textMeasurer.measure(
@@ -342,13 +346,18 @@ fun CustomLineChart(data: List<MonthlyStat>, lineColor: Color) {
 
 @Composable
 fun StatBar(stat: CategoryStat) {
+    val displayName = if (stat.categoryId.isNotBlank() && stat.fallbackName != null) {
+        localizedCategoryName(stat.categoryId, stat.fallbackName)
+    } else {
+        stringResource(R.string.stats_others)
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = if (stat.name == "Otros") stringResource(R.string.stats_others) else stat.name,
+                text = displayName,
                 fontWeight = FontWeight.Medium
             )
             Text(text = formatMoneyCents(stat.totalCents), fontWeight = FontWeight.Bold)

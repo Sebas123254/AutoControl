@@ -15,14 +15,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
+import com.sierracode.autocontrol.core.format.localizedDocumentType
 import com.sierracode.autocontrol.core.ui.components.StatusChip
 import com.sierracode.autocontrol.core.ui.components.StatusVariant
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
@@ -53,7 +56,15 @@ class DocumentsViewModel @Inject constructor(
 
     fun loadVehicle(id: String) { vehicleIdFlow.value = id }
 
-    fun deleteDocument(id: String) = viewModelScope.launch { repo.delete(id) }
+    suspend fun deleteDeferred(id: String) = repo.deleteDeferred(id)
+
+    fun restoreDocument(doc: DocumentEntity) {
+        viewModelScope.launch { repo.save(doc) }
+    }
+
+    fun purgeFile(fileUri: String?) {
+        repo.purgeFile(fileUri)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,28 +79,36 @@ fun DocumentsScreen(
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
-    val docs by vm.documents.collectAsState()
+    val docs by vm.documents.collectAsStateWithLifecycle()
     val today = LocalDate.now().toEpochDay()
 
-    var docToDelete by remember { mutableStateOf<DocumentEntity?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    val undoLabel = stringResource(R.string.action_undo)
+
     var docMenuTarget by remember { mutableStateOf<DocumentEntity?>(null) }
 
-    if (docToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { docToDelete = null },
-            title = { Text(stringResource(R.string.docs_delete_title)) },
-            text = { Text(stringResource(R.string.docs_delete_desc, docToDelete!!.name)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteDocument(docToDelete!!.id)
-                    docToDelete = null
-                }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { docToDelete = null }) { Text(stringResource(R.string.action_cancel)) } }
-        )
+    val deleteWithUndo: (DocumentEntity) -> Unit = { doc ->
+        scope.launch {
+            vm.deleteDeferred(doc.id)
+            val msg = context.getString(R.string.docs_deleted, doc.name)
+            val result = snackbarHostState.showSnackbar(
+                message = msg,
+                actionLabel = undoLabel,
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                vm.restoreDocument(doc)
+            } else {
+                vm.purgeFile(doc.fileUri)
+            }
+        }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -172,8 +191,9 @@ fun DocumentsScreen(
             dismissButton = {
                 Row {
                     TextButton(onClick = {
-                        docToDelete = docMenuTarget
+                        val doc = docMenuTarget!!
                         docMenuTarget = null
+                        deleteWithUndo(doc)
                     }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
                     TextButton(onClick = { docMenuTarget = null }) { Text(stringResource(R.string.action_cancel)) }
                 }
@@ -204,7 +224,14 @@ fun DocumentCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(doc.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(doc.name, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = localizedDocumentType(doc.type),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 StatusChip(text = statusText, icon = statusIcon, variant = variant)
             }
             Spacer(Modifier.height(4.dp))

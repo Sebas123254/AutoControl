@@ -11,8 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -27,12 +29,19 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.delay
 
+/**
+ * Intención de navegación que llega desde fuera del NavHost:
+ * - Notificación: sourceType + sourceId
+ * - App Shortcut: action (ej. "new_expense", "new_fuel")
+ *
+ * Ambos casos tienen vehicleId.
+ */
 data class NavIntent(
     val vehicleId: String,
-    val sourceType: String,
-    val sourceId: String
+    val sourceType: String? = null,
+    val sourceId: String? = null,
+    val action: String? = null
 )
 
 sealed class Route(val path: String) {
@@ -64,24 +73,17 @@ fun AppNavHost(
         EntryPointAccessors.fromApplication(context, SettingsEntry::class.java).settings()
     }
 
-    val onboarded by settings.onboarded.collectAsState(initial = null)
+    val onboarded by settings.onboarded.collectAsStateWithLifecycle(initialValue = null)
 
-    var minTimePassed by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(300)
-        minTimePassed = true
-    }
-
-    if (onboarded == null || !minTimePassed) {
+    if (onboarded == null) {
         SplashScreen()
     } else {
-        LaunchedEffect(navIntent, onboarded, minTimePassed) {
-            if (navIntent != null && onboarded == true && minTimePassed) {
+        LaunchedEffect(navIntent, onboarded) {
+            if (navIntent != null && onboarded == true) {
                 nav.navigate(Route.Main.build(navIntent.vehicleId)) {
                     popUpTo(Route.Vehicles.path) { inclusive = false }
+                    launchSingleTop = true
                 }
-                // Enrutamiento de notificaciones se maneja dentro de MainScreen en este lote
-                onIntentConsumed()
             }
         }
 
@@ -112,9 +114,18 @@ fun AppNavHost(
                 LaunchedEffect(id) { settings.setActiveVehicle(id) }
                 MainScreen(
                     vehicleId = id,
+                    navIntent = navIntent,
+                    onIntentConsumed = onIntentConsumed,
                     onBackToVehicles = { nav.popBackStack() },
                     onOpenSettings = { nav.navigate(Route.Settings.path) },
-                    onEditVehicle = { nav.navigate(Route.VehicleEdit.build(id)) }
+                    onEditVehicle = { nav.navigate(Route.VehicleEdit.build(id)) },
+                    onSwitchVehicle = { newId ->
+                        if (newId != id) {
+                            nav.navigate(Route.Main.build(newId)) {
+                                popUpTo(Route.Main.path) { inclusive = true }
+                            }
+                        }
+                    }
                 )
             }
         }
@@ -130,13 +141,22 @@ fun SplashScreen() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
                 painter = painterResource(id = R.drawable.autocontrol_ico),
-                contentDescription = "AutoControl Logo",
+                contentDescription = stringResource(R.string.splash_logo_cd),
                 modifier = Modifier.size(150.dp).clip(RoundedCornerShape(32.dp))
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Text(text = "AutoControl", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Tu auto. Tus gastos. Bajo control.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = stringResource(R.string.splash_tagline),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(modifier = Modifier.height(48.dp))
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }

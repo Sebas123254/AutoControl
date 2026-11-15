@@ -20,7 +20,7 @@ data class BackupData(
     val goals: List<GoalDto> = emptyList()
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 6 // <-- SUBIDO A 6
+        const val CURRENT_SCHEMA_VERSION = 7 // <-- SUBIDO A 7
     }
 }
 
@@ -83,7 +83,9 @@ data class MaintenanceScheduleDto(
 data class ReminderDto(
     val id: String, val vehicleId: String, val sourceType: String, val sourceId: String,
     val title: String, val body: String, val triggerAtEpochMillis: Long,
-    val enabled: Boolean, val lastNotifiedAt: Long?
+    val enabled: Boolean, val lastNotifiedAt: Long?,
+    val templateKey: String? = null,
+    val templateArgs: String? = null
 )
 
 @Serializable

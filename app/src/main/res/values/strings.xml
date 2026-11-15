@@ -120,6 +120,12 @@
     <string name="vehicles_maint_remind_days">Avisar antes de (días)</string>
     <string name="vehicles_maint_err_interval">Los intervalos deben ser mayores a 0.</string>
     <string name="vehicles_maint_err_negative">Los avisos no pueden ser negativos.</string>
+    <string name="vehicles_backup_success">Respaldo guardado correctamente</string>
+    <string name="vehicles_backup_error">No se pudo guardar el respaldo</string>
+    <string name="vehicles_restore_success">Respaldo restaurado correctamente</string>
+    <string name="vehicles_restore_error">No se pudo restaurar el respaldo</string>
+    <string name="vehicles_pro_activated">Pro activado. Puedes agregar vehículos ilimitados.</string>
+    <string name="vehicles_pro_activate">Activar Pro</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">Inicio</string>
@@ -148,6 +154,9 @@
     <string name="dashboard_maint_full_hint">Necesitas al menos 2 cargas de \'Tanque lleno\'.</string>
     <string name="dashboard_maint_consecutive_hint">Asegúrate de que las cargas con tanque lleno sean consecutivas.</string>
     <string name="dashboard_maint_card_faltan">Faltan %1$s · a los %2$s</string>
+    <string name="dashboard_maint_err_interval">Los intervalos deben ser mayores a 0.</string>
+    <string name="dashboard_maint_err_negative">Los avisos no pueden ser negativos.</string>
+    <string name="dashboard_maint_delete">Eliminar mantenimiento</string>
 
     <!-- Gastos -->
     <string name="expenses_title">Historial de Gastos</string>
@@ -201,6 +210,32 @@
     <string name="expense_edit_err_amount">Ingresa un monto válido</string>
     <string name="expense_edit_err_category">Selecciona una categoría</string>
     <string name="expense_edit_err_generic">Error al guardar: %1$s</string>
+
+    <!-- Detalle de Gasto -->
+    <string name="expense_detail_title">Detalle del Gasto</string>
+    <string name="expense_detail_date">Fecha</string>
+    <string name="expense_detail_odometer">Odómetro</string>
+    <string name="expense_detail_description">Descripción</string>
+    <string name="expense_detail_establishment">Establecimiento</string>
+    <string name="expense_detail_payment_method">Método de pago</string>
+    <string name="expense_detail_notes_section">Notas</string>
+    <string name="expense_detail_receipt">Recibo</string>
+    <string name="expense_detail_tap_image">Toca la imagen para verla completa y compartirla</string>
+    <string name="expense_detail_fuel_section">Detalles de combustible</string>
+    <string name="expense_detail_liters">Litros</string>
+    <string name="expense_detail_price_per_liter">Precio por litro</string>
+    <string name="expense_detail_station">Estación</string>
+    <string name="expense_detail_full_tank">Tanque lleno</string>
+    <string name="expense_detail_maint_section">Detalles del mantenimiento</string>
+    <string name="expense_detail_service">Servicio</string>
+    <string name="expense_detail_workshop">Taller</string>
+    <string name="expense_detail_next_odometer">Próximo odómetro</string>
+    <string name="expense_detail_next_date">Próxima fecha</string>
+    <string name="expense_detail_locked_title">Edición no disponible aquí</string>
+    <string name="expense_detail_locked_desc">Para modificar esta carga o servicio, bórralo y vuelve a registrarlo desde su pantalla original (Gasolina o Mantenimiento).</string>
+    <string name="expense_deleted">Gasto eliminado</string>
+    <string name="expense_detail_yes">Sí</string>
+    <string name="expense_detail_no">No</string>
 
     <!-- Gasolina -->
     <string name="fuel_edit_title">Registrar Gasolina</string>
@@ -288,6 +323,23 @@
     <string name="settings_convert_no_convert">No convertir, solo cambiar etiqueta</string>
     <string name="settings_convert_success">Divisa convertida a %1$s</string>
     <string name="settings_convert_no_convert_success">Divisa cambiada a %1$s (montos sin convertir)</string>
+    <string name="settings_pro_activate">Activar Pro</string>
+    <string name="settings_pro_deactivate">Desactivar Pro</string>
+    <string name="settings_pro_activated">Modo Pro activado</string>
+    <string name="settings_pro_deactivated">Modo Pro desactivado</string>
+    <string name="settings_demo_note">Modo demo: la pasarela de pago se implementará en una versión futura.</string>
+    <string name="settings_dynamic_color">Colores dinámicos (Material You)</string>
+    <string name="settings_dynamic_color_desc">Usa los colores del fondo de pantalla. Requiere Android 12+.</string>
+
+    <!-- Datos -->
+    <string name="settings_data">Datos</string>
+    <string name="settings_data_desc">Borra permanentemente vehículos, gastos, mantenimientos, documentos y fotos de recibos. Los ajustes (tema, unidades, divisa) se conservan.</string>
+    <string name="settings_delete_all">Eliminar todos los datos</string>
+    <string name="settings_delete_all_title">¿Eliminar todos los datos?</string>
+    <string name="settings_delete_all_desc">Se borrará toda tu información: vehículos, gastos, gasolina, mantenimientos, documentos y fotos adjuntas. Esta acción no se puede deshacer.</string>
+    <string name="settings_delete_all_confirm">Eliminar todo</string>
+    <string name="settings_delete_all_success">Datos eliminados correctamente</string>
+    <string name="settings_delete_all_error">No se pudieron eliminar los datos</string>
 
     <!-- Objetivos -->
     <string name="goals_title">Objetivos y Pendientes</string>
@@ -334,6 +386,9 @@
     <string name="goals_buy_action">Registrar Compra y Gasto</string>
     <string name="goals_diff_over">Gastaste %1$s más de lo estimado</string>
     <string name="goals_diff_saved">¡Ahorraste %1$s!</string>
+    <string name="goal_deleted">Objetivo \"%1$s\" eliminado</string>
+    <string name="reminder_deleted">Recordatorio eliminado</string>
+    <string name="goals_filter_count">%1$s (%2$d)</string>
 
     <!-- Documentos -->
     <string name="documents_title">Documentos</string>
@@ -346,6 +401,7 @@
     <string name="docs_valid">Vigente</string>
     <string name="docs_expiry_date_label">Vence: %1$s</string>
     <string name="docs_add">Agregar Documento</string>
+    <string name="docs_deleted">Documento "%1$s" eliminado</string>
 
     <!-- Detalle de Documento -->
     <string name="doc_detail_title">Detalle del Documento</string>
@@ -369,6 +425,8 @@
     <string name="cd_back_to_vehicles">Volver a Mis vehículos</string>
     <string name="cd_edit_vehicle">Editar vehículo</string>
     <string name="cd_switch_vehicle">Cambiar de vehículo</string>
+    <string name="cd_reminders">Recordatorios</string>
+    <string name="cd_settings">Ajustes</string>
     <string name="btn_take_photo">Tomar Foto</string>
     <string name="btn_retake_photo">Repetir Foto</string>
     <string name="btn_gallery">Galería</string>
@@ -379,6 +437,9 @@
     <string name="field_description">Descripción</string>
     <string name="field_attendance">Fecha de la carga *</string>
     <string name="field_service_date">Fecha del servicio *</string>
+    <string name="image_not_available">La imagen ya no está disponible en este dispositivo.</string>
+    <string name="expense_edit_err_image">El recibo no se pudo procesar, pero el gasto fue guardado.</string>
+    <string name="fuel_edit_err_image">El ticket no se pudo procesar, pero la carga fue guardada.</string>
 
     <!-- Onboarding -->
     <string name="onboard_1_title">Conoce el costo real de tu auto.</string>
@@ -420,8 +481,48 @@
     <string name="currency_cad">Dólar canadiense</string>
     <string name="currency_gbp">Libra esterlina</string>
 
+    <!-- Notificaciones -->
+    <string name="notif_channel_reminders">Recordatorios de AutoControl</string>
+    <string name="notif_channel_reminders_desc">Avisos de mantenimiento y documentos</string>
+
+
+    <!-- Splash -->
+    <string name="splash_tagline">Tu auto. Tus gastos. Bajo control.</string>
+    <string name="splash_logo_cd">Logotipo de AutoControl</string>
+
+    <!-- Notificaciones (v2: canales separados + acción) -->
+    <string name="notif_channel_maintenance">Mantenimiento</string>
+    <string name="notif_channel_maintenance_desc">Avisos de servicios y mantenimiento programado</string>
+    <string name="notif_channel_documents">Documentos por vencer</string>
+    <string name="notif_channel_documents_desc">Avisos de pólizas, verificación y otros documentos</string>
+    <string name="notif_action_view">Ver</string>
+    <string name="notif_action_snooze_1h">Posponer 1 h</string>
+    <string name="notif_action_snooze_1d">Posponer 1 día</string>
+    <string name="notif_doc_expiring_title">Documento por vencer: %1$s</string>
+    <string name="notif_doc_expiring_body">Tu documento vence pronto. ¡Revisa AutoControl!</string>
+    <string name="notif_maint_due_title">Mantenimiento: %1$s</string>
+    <string name="notif_maint_due_body">Tu vehículo podría necesitar este servicio pronto.</string>
+
+    <!-- App Shortcuts -->
+    <string name="shortcut_new_expense_short">Nuevo gasto</string>
+    <string name="shortcut_new_expense_long">Registrar un nuevo gasto</string>
+    <string name="shortcut_new_fuel_short">Nueva carga</string>
+    <string name="shortcut_new_fuel_long">Registrar una carga de gasolina</string>
+    <string name="shortcut_new_maint_short">Mantenimiento</string>
+    <string name="shortcut_new_maint_long">Registrar un mantenimiento</string>
+    <string name="shortcut_disabled">Este atajo no está disponible</string>
+
+    <string name="doc_detail_issue_date_label">Fecha de expedición</string>
+    <string name="doc_detail_expiry_date_label">Fecha de vencimiento</string>
+    <string name="doc_detail_lead_days_label">Días de anticipación</string>
+
     <plurals name="expenses_count">
         <item quantity="one">%d gasto</item>
         <item quantity="other">%d gastos</item>
+    </plurals>
+
+    <plurals name="expenses_deleted_count">
+        <item quantity="one">%d gasto eliminado</item>
+        <item quantity="other">%d gastos eliminados</item>
     </plurals>
 </resources>

@@ -14,15 +14,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
+import com.sierracode.autocontrol.core.ui.components.showUndoSnackbar
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.ExpenseRepository
@@ -111,11 +114,14 @@ class GoalsViewModel @Inject constructor(
         viewModelScope.launch { settingsStore.setGoalsSort(sort) }
     }
 
-    fun deleteGoal(id: String, onSuccess: () -> Unit) {
-        viewModelScope.launch {
-            goalRepo.delete(id)
-            onSuccess()
-        }
+    /** Borra inmediatamente; el Snackbar con "Deshacer" se maneja en la UI. */
+    suspend fun deleteGoal(id: String) {
+        goalRepo.delete(id)
+    }
+
+    /** Restaura un goal previamente borrado (undo). */
+    fun restoreGoal(goal: GoalEntity) {
+        viewModelScope.launch { goalRepo.save(goal) }
     }
 }
 
@@ -130,40 +136,46 @@ fun GoalsScreen(
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
-    val state by vm.uiState.collectAsState()
-    val activeFilter by vm.activeFilter.collectAsState()
-    val activeSort by vm.activeSort.collectAsState()
+    val state by vm.uiState.collectAsStateWithLifecycle()
+    val activeFilter by vm.activeFilter.collectAsStateWithLifecycle()
+    val activeSort by vm.activeSort.collectAsStateWithLifecycle()
 
     var expandedCompleted by remember { mutableStateOf(false) }
-    var goalToDelete by remember { mutableStateOf<GoalEntity?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
 
-    // Traducimos los nombres de los filtros para usarlos en la UI
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    val priorityAlta = stringResource(R.string.priority_alta)
+    val priorityMedia = stringResource(R.string.priority_media)
+    val priorityBaja = stringResource(R.string.priority_baja)
+    val undoLabel = stringResource(R.string.action_undo)
+
     val filterAllLabel = stringResource(R.string.goals_filter_all, state.countAll)
-    val filterHighLabel = "${stringResource(R.string.priority_alta)} (${state.countHigh})"
-    val filterMediumLabel = "${stringResource(R.string.priority_media)} (${state.countMedium})"
-    val filterLowLabel = "${stringResource(R.string.priority_baja)} (${state.countLow})"
+    val filterHighLabel = stringResource(R.string.goals_filter_count, priorityAlta, state.countHigh)
+    val filterMediumLabel = stringResource(R.string.goals_filter_count, priorityMedia, state.countMedium)
+    val filterLowLabel = stringResource(R.string.goals_filter_count, priorityBaja, state.countLow)
 
     val currentFilterText = when (activeFilter) {
         GoalFilter.ALL -> filterAllLabel
-        GoalFilter.HIGH -> stringResource(R.string.priority_alta)
-        GoalFilter.MEDIUM -> stringResource(R.string.priority_media)
-        GoalFilter.LOW -> stringResource(R.string.priority_baja)
+        GoalFilter.HIGH -> priorityAlta
+        GoalFilter.MEDIUM -> priorityMedia
+        GoalFilter.LOW -> priorityBaja
     }
 
-    if (goalToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { goalToDelete = null },
-            title = { Text(stringResource(R.string.goal_delete_title)) },
-            text = { Text(stringResource(R.string.goal_delete_desc)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteGoal(goalToDelete!!.id) { goalToDelete = null }
-                }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { goalToDelete = null }) { Text(stringResource(R.string.action_cancel)) } }
-        )
+    // Callback reutilizable para borrar con undo
+    val deleteWithUndo: (GoalEntity) -> Unit = { goal ->
+        scope.launch {
+            vm.deleteGoal(goal.id)
+            val msg = context.getString(R.string.goal_deleted, goal.title)
+            snackbarHostState.showUndoSnackbar(
+                message = msg,
+                actionLabel = undoLabel
+            ) {
+                vm.restoreGoal(goal)
+            }
+        }
     }
 
     Scaffold(
@@ -254,7 +266,11 @@ fun GoalsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(state.pendingGoals, key = { it.id }) { goal ->
-                        GoalListCard(goal = goal, onClick = { onGoalClick(goal.id) }, onDelete = { goalToDelete = goal })
+                        GoalListCard(
+                            goal = goal,
+                            onClick = { onGoalClick(goal.id) },
+                            onDelete = { deleteWithUndo(goal) }
+                        )
                     }
 
                     if (state.completedGoals.isNotEmpty()) {
@@ -269,7 +285,11 @@ fun GoalsScreen(
                         }
                         if (expandedCompleted) {
                             items(state.completedGoals, key = { it.goal.id }) { item ->
-                                GoalListCard(goal = item.goal, onClick = { onGoalClick(item.goal.id) }, onDelete = { goalToDelete = item.goal })
+                                GoalListCard(
+                                    goal = item.goal,
+                                    onClick = { onGoalClick(item.goal.id) },
+                                    onDelete = { deleteWithUndo(item.goal) }
+                                )
                             }
                         }
                     }

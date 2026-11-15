@@ -14,7 +14,7 @@ import com.sierracode.autocontrol.data.local.entity.*
         MaintenanceScheduleEntity::class, DocumentEntity::class,
         AttachmentEntity::class, ReminderEntity::class, GoalEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AutoControlDatabase : RoomDatabase() {
@@ -82,5 +82,24 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE vehicles ADD COLUMN currencyCode TEXT NOT NULL DEFAULT 'MXN'")
         database.execSQL("ALTER TABLE vehicles ADD COLUMN unitSystem TEXT NOT NULL DEFAULT 'METRIC'")
+    }
+}
+
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE reminders ADD COLUMN templateKey TEXT")
+        database.execSQL("ALTER TABLE reminders ADD COLUMN templateArgs TEXT")
+
+        // Backfill: inferir templateKey según sourceType. Los recordatorios
+        // viejos no tienen templateArgs, así que ReminderResolver caerá al
+        // title/body persistido (comportamiento idéntico al previo).
+        database.execSQL(
+            "UPDATE reminders SET templateKey = 'document_expiring' " +
+                    "WHERE sourceType = 'DOCUMENT' AND templateKey IS NULL"
+        )
+        database.execSQL(
+            "UPDATE reminders SET templateKey = 'maintenance_due' " +
+                    "WHERE sourceType = 'MAINTENANCE' AND templateKey IS NULL"
+        )
     }
 }

@@ -31,23 +31,34 @@ class MainActivityViewModel @Inject constructor(
                 settingsStore.currencyCode,
                 settingsStore.unitSystem,
                 settingsStore.efficiencyFormat,
-                settingsStore.isPro
-            ) { c, u, e, p -> AppConfig(c, u, e, p) }
+                settingsStore.isPro,
+                settingsStore.dynamicColor
+            ) { values ->
+                AppConfig(
+                    currencyCode = values[0] as String,
+                    unitSystem = values[1] as UnitSystem,
+                    efficiencyFormat = values[2] as EfficiencyFormat,
+                    isPro = values[3] as Boolean,
+                    dynamicColor = values[4] as Boolean
+                )
+            }
         } else {
             combine(
                 vehicleRepo.observe(id),
                 settingsStore.efficiencyFormat,
-                settingsStore.isPro
-            ) { vehicle, eff, pro ->
+                settingsStore.isPro,
+                settingsStore.dynamicColor
+            ) { vehicle, eff, pro, dynamic ->
                 if (vehicle != null) {
                     AppConfig(
                         currencyCode = vehicle.currencyCode,
                         unitSystem = if (vehicle.unitSystem == "METRIC") UnitSystem.METRIC else UnitSystem.US,
                         efficiencyFormat = if (vehicle.unitSystem == "METRIC") eff else EfficiencyFormat.MPG_US,
-                        isPro = pro
+                        isPro = pro,
+                        dynamicColor = dynamic
                     )
                 } else {
-                    AppConfig()
+                    AppConfig(dynamicColor = dynamic)
                 }
             }
         }

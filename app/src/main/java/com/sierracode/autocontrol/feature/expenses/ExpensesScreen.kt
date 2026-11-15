@@ -2,7 +2,6 @@ package com.sierracode.autocontrol.feature.expenses
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -21,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
@@ -179,44 +180,32 @@ class ExpensesViewModel @Inject constructor(
 fun ExpensesScreen(
     vehicleId: String,
     vehicleName: String,
-    onEditClick: (String) -> Unit,
+    onDetailClick: (String) -> Unit,
     onAddClick: () -> Unit,
     vm: ExpensesViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
-    val expenses by vm.filteredExpenses.collectAsState()
-    val totalCents by vm.totalCents.collectAsState()
-    val categories by vm.allCategories.collectAsState()
-    val filterState by vm.filterState.collectAsState()
+    val expenses by vm.filteredExpenses.collectAsStateWithLifecycle()
+    val totalCents by vm.totalCents.collectAsStateWithLifecycle()
+    val categories by vm.allCategories.collectAsStateWithLifecycle()
+    val filterState by vm.filterState.collectAsStateWithLifecycle()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCategorySheet by remember { mutableStateOf(false) }
     var showMonthPicker by remember { mutableStateOf(false) }
-    var blockedEditMessage by remember { mutableStateOf<String?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    val blockedEditText = stringResource(R.string.expenses_blocked_edit_desc)
     val selectedDesc = stringResource(R.string.expenses_tooltip_single)
     val notSelectedDesc = stringResource(R.string.expenses_tooltip_none)
 
     BackHandler(enabled = vm.isSelectionMode) { vm.clearSelection() }
     BackHandler(enabled = vm.isSearchActive) { vm.updateSearchActive(false) }
-
-    if (blockedEditMessage != null) {
-        AlertDialog(
-            onDismissRequest = { blockedEditMessage = null },
-            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text(stringResource(R.string.expenses_blocked_edit_title)) },
-            text = { Text(blockedEditMessage!!) },
-            confirmButton = {
-                TextButton(onClick = { blockedEditMessage = null }) { Text(stringResource(R.string.action_understood)) }
-            }
-        )
-    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -227,9 +216,10 @@ fun ExpensesScreen(
                 TextButton(onClick = {
                     showDeleteDialog = false
                     vm.deleteSelected { count ->
-                        kotlinx.coroutines.MainScope().launch {
-                            snackbarHostState.showSnackbar("$count gasto(s) eliminado(s)")
-                        }
+                        val msg = context.resources.getQuantityString(
+                            R.plurals.expenses_deleted_count, count, count
+                        )
+                        scope.launch { snackbarHostState.showSnackbar(msg) }
                     }
                 }, enabled = !vm.isDeleting) {
                     if (vm.isDeleting) CircularProgressIndicator(modifier = Modifier.size(16.dp))
@@ -273,8 +263,9 @@ fun ExpensesScreen(
             onDismissRequest = { showMonthPicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    state.selectedDateMillis?.let {
-                        val date = java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    state.selectedDateMillis?.let { millis ->
+                        val date = java.time.Instant.ofEpochMilli(millis)
+                            .atZone(java.time.ZoneOffset.UTC).toLocalDate()
                         vm.setCustomMonth(YearMonth.from(date))
                     }
                     showMonthPicker = false
@@ -436,11 +427,8 @@ fun ExpensesScreen(
                             onClick = {
                                 if (vm.isSelectionMode) {
                                     vm.toggleSelection(expense.id)
-                                } else if (expense.type == "FUEL" || expense.type == "MAINTENANCE") {
-                                    blockedEditMessage = blockedEditText
                                 } else {
-                                    vm.selectExpense(expense)
-                                    onEditClick(expense.id)
+                                    onDetailClick(expense.id)
                                 }
                             },
                             onLongClick = { vm.enterSelectionMode(expense.id) },
@@ -474,7 +462,11 @@ fun ExpenseRow(
     ) {
         Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             if (isSelectionMode) {
-                Checkbox(checked = isSelected, onCheckedChange = { onClick() }, modifier = Modifier.padding(end = 12.dp))
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = null,
+                    modifier = Modifier.padding(end = 12.dp)
+                )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

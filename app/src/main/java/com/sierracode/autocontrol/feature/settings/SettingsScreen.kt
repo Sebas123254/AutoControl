@@ -1,5 +1,6 @@
 package com.sierracode.autocontrol.feature.settings
 
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -7,9 +8,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,29 +24,40 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.BuildConfig
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.data.local.AutoControlDatabase
+import com.sierracode.autocontrol.data.local.seed.CategorySeed
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.CurrencyRepository
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settings: SettingsStore,
     private val vehicleRepo: VehicleRepository,
-    private val currencyRepo: CurrencyRepository
+    private val currencyRepo: CurrencyRepository,
+    private val db: AutoControlDatabase,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
     val darkMode = settings.darkMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val isPro = settings.isPro.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val dynamicColor = settings.dynamicColor.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val activeVehicle = settings.activeVehicleId
         .combine(vehicleRepo.observeAll()) { id, vehicles -> vehicles.find { it.id == id } }
@@ -60,7 +75,14 @@ class SettingsViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitSystem.METRIC)
 
+    private val _isDeleting = MutableStateFlow(false)
+    val isDeleting = _isDeleting.asStateFlow()
+
     fun setTheme(mode: Boolean?) = viewModelScope.launch { settings.setDark(mode) }
+
+    fun setDynamicColor(v: Boolean) = viewModelScope.launch { settings.setDynamicColor(v) }
+
+    fun setPro(value: Boolean) = viewModelScope.launch { settings.setPro(value) }
 
     fun setUnitSystem(system: UnitSystem) = viewModelScope.launch {
         settings.setUnitSystem(system)
@@ -87,6 +109,29 @@ class SettingsViewModel @Inject constructor(
         }
         onDone()
     }
+
+    fun deleteAllData(onSuccess: () -> Unit, onError: (String) -> Unit) =
+        viewModelScope.launch {
+            _isDeleting.value = true
+            try {
+                withContext(Dispatchers.IO) {
+                    db.clearAllTables()
+                    db.categoryDao().upsertAll(CategorySeed.all())
+                    context.filesDir.listFiles()?.forEach { file ->
+                        if (file.name.startsWith("img_") || file.name.startsWith("doc_")) {
+                            file.delete()
+                        }
+                    }
+                }
+                settings.setActiveVehicle(null)
+                onSuccess()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError(e.message ?: "Error desconocido")
+            } finally {
+                _isDeleting.value = false
+            }
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,13 +140,16 @@ fun SettingsScreen(
     onBack: () -> Unit,
     vm: SettingsViewModel = hiltViewModel()
 ) {
-    val darkMode by vm.darkMode.collectAsState()
-    val isPro by vm.isPro.collectAsState()
-    val currency by vm.currentCurrency.collectAsState()
-    val units by vm.currentUnitSystem.collectAsState()
+    val darkMode by vm.darkMode.collectAsStateWithLifecycle()
+    val isPro by vm.isPro.collectAsStateWithLifecycle()
+    val dynamicColor by vm.dynamicColor.collectAsStateWithLifecycle()
+    val currency by vm.currentCurrency.collectAsStateWithLifecycle()
+    val units by vm.currentUnitSystem.collectAsStateWithLifecycle()
+    val isDeleting by vm.isDeleting.collectAsStateWithLifecycle()
 
     var showCurrencyMenu by remember { mutableStateOf(false) }
     var showConversionDialog by remember { mutableStateOf(false) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
     var targetCurrency by remember { mutableStateOf("") }
     var rateInput by remember { mutableStateOf("") }
     var ratePrompt by remember { mutableStateOf("") }
@@ -111,8 +159,11 @@ fun SettingsScreen(
 
     val successConvertText = stringResource(R.string.settings_convert_success)
     val noConvertSuccessText = stringResource(R.string.settings_convert_no_convert_success)
+    val deleteAllSuccessText = stringResource(R.string.settings_delete_all_success)
+    val deleteAllErrorText = stringResource(R.string.settings_delete_all_error)
+    val proActivatedText = stringResource(R.string.settings_pro_activated)
+    val proDeactivatedText = stringResource(R.string.settings_pro_deactivated)
 
-    // CORRECCIÓN: Mapeamos los códigos con sus nombres traducidos
     val currencyOptions = listOf(
         "MXN" to stringResource(R.string.currency_mxn),
         "USD" to stringResource(R.string.currency_usd),
@@ -177,6 +228,55 @@ fun SettingsScreen(
         )
     }
 
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isDeleting) showDeleteAllDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(stringResource(R.string.settings_delete_all_title)) },
+            text = { Text(stringResource(R.string.settings_delete_all_desc)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteAllData(
+                            onSuccess = {
+                                showDeleteAllDialog = false
+                                scope.launch { snackbarHostState.showSnackbar(deleteAllSuccessText) }
+                            },
+                            onError = {
+                                showDeleteAllDialog = false
+                                scope.launch { snackbarHostState.showSnackbar(deleteAllErrorText) }
+                            }
+                        )
+                    },
+                    enabled = !isDeleting
+                ) {
+                    if (isDeleting) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                    } else {
+                        Text(
+                            stringResource(R.string.settings_delete_all_confirm),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { if (!isDeleting) showDeleteAllDialog = false },
+                    enabled = !isDeleting
+                ) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -234,6 +334,38 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(16.dp))
+
+                    // Toggle Material You
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Palette,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.settings_dynamic_color),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                stringResource(R.string.settings_dynamic_color_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = dynamicColor,
+                            onCheckedChange = { vm.setDynamicColor(it) }
+                        )
+                    }
                 }
             }
 
@@ -270,7 +402,6 @@ fun SettingsScreen(
                             expanded = showCurrencyMenu,
                             onDismissRequest = { showCurrencyMenu = false }
                         ) {
-                            // CORRECCIÓN: Ahora iteramos sobre la lista traducida
                             currencyOptions.forEach { (code, name) ->
                                 DropdownMenuItem(
                                     text = { Text("$code · $name") },
@@ -349,6 +480,39 @@ fun SettingsScreen(
                             )
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        stringResource(R.string.settings_demo_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (isPro) {
+                        OutlinedButton(
+                            onClick = {
+                                vm.setPro(false)
+                                scope.launch { snackbarHostState.showSnackbar(proDeactivatedText) }
+                            },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.settings_pro_deactivate))
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                vm.setPro(true)
+                                scope.launch { snackbarHostState.showSnackbar(proActivatedText) }
+                            },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        ) {
+                            Icon(Icons.Default.Star, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.settings_pro_activate))
+                        }
+                    }
                 }
             }
 
@@ -370,6 +534,34 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // DATOS
+            Text(
+                stringResource(R.string.settings_data),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        stringResource(R.string.settings_data_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { showDeleteAllDialog = true },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.settings_delete_all))
                     }
                 }
             }
@@ -425,7 +617,7 @@ fun ThemeChip(
                 tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 label,
                 style = MaterialTheme.typography.labelMedium,

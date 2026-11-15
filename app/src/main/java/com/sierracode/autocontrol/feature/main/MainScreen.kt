@@ -8,12 +8,12 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavType
@@ -28,6 +28,7 @@ import com.sierracode.autocontrol.feature.dashboard.DashboardScreen
 import com.sierracode.autocontrol.feature.documents.DocumentDetailScreen
 import com.sierracode.autocontrol.feature.documents.DocumentEditScreen
 import com.sierracode.autocontrol.feature.documents.DocumentsScreen
+import com.sierracode.autocontrol.feature.expenses.ExpenseDetailScreen
 import com.sierracode.autocontrol.feature.expenses.ExpenseEditScreen
 import com.sierracode.autocontrol.feature.expenses.ExpensesScreen
 import com.sierracode.autocontrol.feature.fuel.FuelEditScreen
@@ -37,6 +38,7 @@ import com.sierracode.autocontrol.feature.goals.GoalsScreen
 import com.sierracode.autocontrol.feature.maintenance.MaintenanceEditScreen
 import com.sierracode.autocontrol.feature.reminders.RemindersScreen
 import com.sierracode.autocontrol.feature.stats.StatsScreen
+import com.sierracode.autocontrol.navigation.NavIntent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,13 +76,16 @@ class MainViewModel @Inject constructor(
 @Composable
 fun MainScreen(
     vehicleId: String,
+    navIntent: NavIntent? = null,
+    onIntentConsumed: () -> Unit = {},
     onBackToVehicles: () -> Unit,
     onOpenSettings: () -> Unit,
-    onEditVehicle: () -> Unit
+    onEditVehicle: () -> Unit,
+    onSwitchVehicle: (String) -> Unit
 ) {
     val vm: MainViewModel = hiltViewModel()
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
-    val vehicleName by vm.vehicleName.collectAsState()
+    val vehicleName by vm.vehicleName.collectAsStateWithLifecycle()
 
     val navController = rememberNavController()
     val tabs = listOf(
@@ -99,6 +104,23 @@ fun MainScreen(
 
     BackHandler(enabled = currentRoute == BottomNavItem.Dashboard.route) {
         onBackToVehicles()
+    }
+
+    LaunchedEffect(navIntent, vehicleId) {
+        if (navIntent != null && navIntent.vehicleId == vehicleId) {
+            val target = when {
+                navIntent.action == "new_expense" -> "expense_edit/$vehicleId?expenseId=&goalId="
+                navIntent.action == "new_fuel" -> "fuel_edit/$vehicleId"
+                navIntent.action == "new_maintenance" -> "maint_edit/$vehicleId"
+                navIntent.sourceType == "DOCUMENT" -> "document_detail/${navIntent.sourceId}"
+                navIntent.sourceType == "MAINTENANCE" -> "reminders"
+                else -> null
+            }
+            if (target != null) {
+                navController.navigate(target)
+            }
+            onIntentConsumed()
+        }
     }
 
     Scaffold(
@@ -134,10 +156,10 @@ fun MainScreen(
                     vehicleId = vehicleId,
                     onBack = onBackToVehicles,
                     onEditVehicle = onEditVehicle,
-                    onSwitchVehicle = { /* Toque pendiente de implementar */ },
-                    onRegisterExpense = { navController.navigate("expense_edit?expenseId=&goalId=") },
-                    onRegisterFuel = { navController.navigate("fuel_edit") },
-                    onRegisterMaintenance = { navController.navigate("maint_edit") },
+                    onSwitchVehicle = { newId -> onSwitchVehicle(newId) },
+                    onRegisterExpense = { navController.navigate("expense_edit/$vehicleId?expenseId=&goalId=") },
+                    onRegisterFuel = { navController.navigate("fuel_edit/$vehicleId") },
+                    onRegisterMaintenance = { navController.navigate("maint_edit/$vehicleId") },
                     onOpenReminders = { navController.navigate("reminders") },
                     onOpenSettings = onOpenSettings
                 )
@@ -146,15 +168,15 @@ fun MainScreen(
                 ExpensesScreen(
                     vehicleId = vehicleId,
                     vehicleName = vehicleName,
-                    onEditClick = { id -> navController.navigate("expense_edit?expenseId=$id&goalId=") },
-                    onAddClick = { navController.navigate("expense_edit?expenseId=&goalId=") }
+                    onDetailClick = { id -> navController.navigate("expense_detail/$id") },
+                    onAddClick = { navController.navigate("expense_edit/$vehicleId?expenseId=&goalId=") }
                 )
             }
             composable(BottomNavItem.Goals.route) {
                 GoalsScreen(
                     vehicleId = vehicleId,
                     vehicleName = vehicleName,
-                    onAddClick = { navController.navigate("goal_edit?goalId=") },
+                    onAddClick = { navController.navigate("goal_edit/$vehicleId?goalId=") },
                     onGoalClick = { id -> navController.navigate("goal_detail/$id") }
                 )
             }
@@ -175,50 +197,84 @@ fun MainScreen(
                 DocumentsScreen(
                     vehicleId = vehicleId,
                     vehicleName = vehicleName,
-                    onAddClick = { navController.navigate("document_edit?documentId=") },
-                    onEditClick = { id -> navController.navigate("document_edit?documentId=$id") },
+                    onAddClick = { navController.navigate("document_edit/$vehicleId?documentId=") },
+                    onEditClick = { id -> navController.navigate("document_edit/$vehicleId?documentId=$id") },
                     onDocumentClick = { id -> navController.navigate("document_detail/$id") }
                 )
             }
 
+            // --- Detalle de gasto ---
             composable(
-                "expense_edit?expenseId={expenseId}&goalId={goalId}",
-                arguments = listOf(navArgument("expenseId") { defaultValue = "" }, navArgument("goalId") { defaultValue = "" })
+                "expense_detail/{expenseId}",
+                arguments = listOf(navArgument("expenseId") { type = NavType.StringType })
             ) { back ->
+                val eId = back.arguments!!.getString("expenseId")!!
+                ExpenseDetailScreen(
+                    expenseId = eId,
+                    vehicleId = vehicleId,
+                    onBack = { navController.popBackStack() },
+                    onEditClick = { navController.navigate("expense_edit/$vehicleId?expenseId=$eId&goalId=") },
+                    onOpenSettings = onOpenSettings
+                )
+            }
+
+            composable(
+                "expense_edit/{vehicleId}?expenseId={expenseId}&goalId={goalId}",
+                arguments = listOf(
+                    navArgument("vehicleId") { type = NavType.StringType },
+                    navArgument("expenseId") { defaultValue = "" },
+                    navArgument("goalId") { defaultValue = "" }
+                )
+            ) { back ->
+                val vId = back.arguments?.getString("vehicleId") ?: vehicleId
                 val eId = back.arguments?.getString("expenseId")?.takeIf { it.isNotBlank() }
                 val gId = back.arguments?.getString("goalId")?.takeIf { it.isNotBlank() }
                 ExpenseEditScreen(
-                    vehicleId = vehicleId,
+                    vehicleId = vId,
                     expenseId = eId,
                     goalId = gId,
                     onDone = { navController.popBackStack() },
                     onOpenSettings = onOpenSettings
                 )
             }
-            composable("fuel_edit") {
-                FuelEditScreen(vehicleId = vehicleId, onDone = { navController.popBackStack() })
+            composable(
+                "fuel_edit/{vehicleId}",
+                arguments = listOf(navArgument("vehicleId") { type = NavType.StringType })
+            ) { back ->
+                val vId = back.arguments?.getString("vehicleId") ?: vehicleId
+                FuelEditScreen(vehicleId = vId, onDone = { navController.popBackStack() })
             }
-            composable("maint_edit") {
-                MaintenanceEditScreen(vehicleId = vehicleId, onDone = { navController.popBackStack() })
+            composable(
+                "maint_edit/{vehicleId}",
+                arguments = listOf(navArgument("vehicleId") { type = NavType.StringType })
+            ) { back ->
+                val vId = back.arguments?.getString("vehicleId") ?: vehicleId
+                MaintenanceEditScreen(vehicleId = vId, onDone = { navController.popBackStack() })
             }
             composable("reminders") {
                 RemindersScreen(vehicleId = vehicleId, onBack = { navController.popBackStack() })
             }
             composable(
-                "document_edit?documentId={documentId}",
-                arguments = listOf(navArgument("documentId") { defaultValue = "" })
+                "document_edit/{vehicleId}?documentId={documentId}",
+                arguments = listOf(
+                    navArgument("vehicleId") { type = NavType.StringType },
+                    navArgument("documentId") { defaultValue = "" }
+                )
             ) {
                 DocumentEditScreen(onDone = { navController.popBackStack() })
             }
             composable("document_detail/{documentId}") {
                 DocumentDetailScreen(
                     onBack = { navController.popBackStack() },
-                    onEditClick = { id -> navController.navigate("document_edit?documentId=$id") }
+                    onEditClick = { id -> navController.navigate("document_edit/$vehicleId?documentId=$id") }
                 )
             }
             composable(
-                "goal_edit?goalId={goalId}",
-                arguments = listOf(navArgument("goalId") { defaultValue = "" })
+                "goal_edit/{vehicleId}?goalId={goalId}",
+                arguments = listOf(
+                    navArgument("vehicleId") { type = NavType.StringType },
+                    navArgument("goalId") { defaultValue = "" }
+                )
             ) {
                 GoalEditScreen(onDone = { navController.popBackStack() })
             }
@@ -226,8 +282,8 @@ fun MainScreen(
                 val gId = back.arguments!!.getString("goalId")!!
                 GoalDetailScreen(
                     onBack = { navController.popBackStack() },
-                    onEditClick = { navController.navigate("goal_edit?goalId=$gId") },
-                    onBuyClick = { navController.navigate("expense_edit?expenseId=&goalId=$gId") }
+                    onEditClick = { navController.navigate("goal_edit/$vehicleId?goalId=$gId") },
+                    onBuyClick = { navController.navigate("expense_edit/$vehicleId?expenseId=&goalId=$gId") }
                 )
             }
         }

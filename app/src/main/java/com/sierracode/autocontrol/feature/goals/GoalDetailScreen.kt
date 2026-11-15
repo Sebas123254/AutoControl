@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
@@ -50,7 +51,6 @@ class GoalDetailViewModel @Inject constructor(
 
     private val goalFlow = MutableStateFlow<GoalEntity?>(null)
 
-    // Combinamos el Goal con su Expense vinculado y las categorías para mostrar el nombre de la categoría
     val uiState = combine(goalFlow, categories) { goal, cats ->
         if (goal == null) return@combine null
         val expense = goal.linkedExpenseId?.let { expenseRepo.get(it) }
@@ -73,7 +73,7 @@ fun GoalDetailScreen(
     onBuyClick: () -> Unit,
     vm: GoalDetailViewModel = hiltViewModel()
 ) {
-    val state by vm.uiState.collectAsState()
+    val state by vm.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -127,7 +127,6 @@ fun GoalDetailScreen(
 
                 HorizontalDivider()
 
-                // Costos
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -175,7 +174,6 @@ fun GoalDetailScreen(
 
                 Spacer(Modifier.weight(1f))
 
-                // Botón de comprar solo si está pendiente
                 if (goal.status == "PENDIENTE") {
                     Button(
                         onClick = onBuyClick,

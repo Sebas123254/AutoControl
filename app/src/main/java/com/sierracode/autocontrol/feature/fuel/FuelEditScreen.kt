@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.sierracode.autocontrol.R
@@ -55,13 +56,16 @@ import com.sierracode.autocontrol.data.repository.VehicleRepository
 import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZoneOffset
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.math.roundToLong
@@ -72,95 +76,98 @@ class FuelEditViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val settingsStore: SettingsStore,
     categoryRepo: CategoryRepository,
-    savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
 
-    val fuelCategories = categoryRepo.observeAll()
+    val fuelCategories: StateFlow<List<CategoryEntity>> = categoryRepo.observeAll()
         .map { list -> list.filter { it.group == "FUEL" } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    var selectedCategory by mutableStateOf<CategoryEntity?>(null)
-    var dateEpochDay by mutableStateOf(LocalDate.now().toEpochDay())
-    var odometer by mutableStateOf("")
-    var liters by mutableStateOf("")
-    var pricePerLiter by mutableStateOf("")
-    var total by mutableStateOf("")
-    var station by mutableStateOf("")
-    var isFullTank by mutableStateOf(true)
-    var selectedImageUri by mutableStateOf<Uri?>(null)
+    val selectedCategoryId: StateFlow<String?> = savedStateHandle.getStateFlow("categoryId", null)
+    val selectedCategory: StateFlow<CategoryEntity?> = combine(selectedCategoryId, fuelCategories) { id, cats ->
+        cats.find { it.id == id } ?: cats.firstOrNull { it.id == "fuel_gas" } ?: cats.firstOrNull()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    var hasUnsavedChanges by mutableStateOf(false)
-        private set
+    val dateEpochDay: StateFlow<Long> = savedStateHandle.getStateFlow("dateEpochDay", LocalDate.now().toEpochDay())
+    val odometer: StateFlow<String> = savedStateHandle.getStateFlow("odometer", "")
+    val liters: StateFlow<String> = savedStateHandle.getStateFlow("liters", "")
+    val pricePerLiter: StateFlow<String> = savedStateHandle.getStateFlow("pricePerLiter", "")
+    val total: StateFlow<String> = savedStateHandle.getStateFlow("total", "")
+    val station: StateFlow<String> = savedStateHandle.getStateFlow("station", "")
+    val isFullTank: StateFlow<Boolean> = savedStateHandle.getStateFlow("isFullTank", true)
+    val selectedImageUri: StateFlow<Uri?> = savedStateHandle.getStateFlow<String?>("imageUriString", null)
+        .map { it?.let { Uri.parse(it) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val hasUnsavedChanges: StateFlow<Boolean> = savedStateHandle.getStateFlow("hasUnsavedChanges", false)
 
     var isLoading by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
+        private set
     var warningMessage by mutableStateOf<String?>(null)
         private set
 
     init {
-        viewModelScope.launch {
-            val unitSystem = settingsStore.unitSystem.first()
-            val vehicle = vehicleRepo.observe(vehicleId).first()
-            if (vehicle != null && odometer.isEmpty()) {
-                odometer = if (unitSystem == UnitSystem.US) {
-                    UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
-                } else {
-                    vehicle.odometer.toString()
+        if (!savedStateHandle.contains("loadedFromDb")) {
+            viewModelScope.launch {
+                val unitSystem = settingsStore.unitSystem.first()
+                val vehicle = vehicleRepo.observe(vehicleId).first()
+                if (vehicle != null && odometer.value.isBlank()) {
+                    savedStateHandle["odometer"] = if (unitSystem == UnitSystem.US) {
+                        UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
+                    } else {
+                        vehicle.odometer.toString()
+                    }
                 }
+                savedStateHandle["loadedFromDb"] = true
             }
         }
     }
 
-    fun updateCategory(newCat: CategoryEntity) { selectedCategory = newCat; hasUnsavedChanges = true }
-    fun updateDate(newDate: LocalDate) { dateEpochDay = newDate.toEpochDay(); hasUnsavedChanges = true }
-    fun updateOdometer(newOdo: String) { odometer = newOdo; hasUnsavedChanges = true }
-    fun updateLiters(newLiters: String) { liters = newLiters; onLitersOrPriceChange(); hasUnsavedChanges = true }
-    fun updatePrice(newPrice: String) { pricePerLiter = newPrice; onLitersOrPriceChange(); hasUnsavedChanges = true }
-    fun updateTotal(newTotal: String) { total = newTotal; hasUnsavedChanges = true }
-    fun updateStation(newStation: String) { station = newStation; hasUnsavedChanges = true }
-    fun updateFullTank(isFull: Boolean) { isFullTank = isFull; hasUnsavedChanges = true }
-    fun updateImage(newUri: Uri?) { selectedImageUri = newUri; hasUnsavedChanges = true }
+    fun updateCategory(cat: CategoryEntity) { savedStateHandle["categoryId"] = cat.id; markDirty() }
+    fun updateDate(d: LocalDate) { savedStateHandle["dateEpochDay"] = d.toEpochDay(); markDirty() }
+    fun updateOdometer(v: String) { savedStateHandle["odometer"] = v; markDirty() }
+    fun updateLiters(v: String) { savedStateHandle["liters"] = v; onLitersOrPriceChange(); markDirty() }
+    fun updatePrice(v: String) { savedStateHandle["pricePerLiter"] = v; onLitersOrPriceChange(); markDirty() }
+    fun updateTotal(v: String) { savedStateHandle["total"] = v; markDirty() }
+    fun updateStation(v: String) { savedStateHandle["station"] = v; markDirty() }
+    fun updateFullTank(v: Boolean) { savedStateHandle["isFullTank"] = v; markDirty() }
+    fun updateImage(uri: Uri?) { savedStateHandle["imageUriString"] = uri?.toString(); markDirty() }
     fun clearWarning() { warningMessage = null }
+    private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
 
     private fun onLitersOrPriceChange() {
-        val l = liters.toDoubleOrNull()
-        val p = pricePerLiter.toDoubleOrNull()
+        val l = liters.value.toDoubleOrNull()
+        val p = pricePerLiter.value.toDoubleOrNull()
         if (l != null && p != null) {
-            total = String.format(java.util.Locale.US, "%.2f", l * p)
+            savedStateHandle["total"] = String.format(Locale.US, "%.2f", l * p)
         }
     }
 
     fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
-        val lInput = liters.toDoubleOrNull() ?: 0.0
-        val tInput = total.toDoubleOrNull() ?: 0.0
-        val pInput = pricePerLiter.toDoubleOrNull() ?: 0.0
-        val odoInput = odometer.toDoubleOrNull()
+        val lInput = liters.value.toDoubleOrNull() ?: 0.0
+        val tInput = total.value.toDoubleOrNull() ?: 0.0
+        val pInput = pricePerLiter.value.toDoubleOrNull() ?: 0.0
+        val odoInput = odometer.value.toDoubleOrNull()
+        val currentCategory = selectedCategory.value
 
         if (tInput <= 0 || lInput <= 0) {
-            error = context.getString(R.string.fuel_edit_err_valid)
-            return
+            error = context.getString(R.string.fuel_edit_err_valid); return
         }
-        if (selectedCategory == null) {
-            error = context.getString(R.string.fuel_edit_err_type)
-            return
+        if (currentCategory == null) {
+            error = context.getString(R.string.fuel_edit_err_type); return
         }
 
         val odoKm = if (odoInput != null) {
             if (unitSystem == UnitSystem.METRIC) odoInput.roundToLong() else UnitConverter.milesToKm(odoInput)
         } else null
 
-        val litersMilli = if (unitSystem == UnitSystem.METRIC) {
-            (lInput * 1000).roundToLong()
-        } else {
-            UnitConverter.gallonsToLitersMilli(lInput)
-        }
+        val litersMilli = if (unitSystem == UnitSystem.METRIC) (lInput * 1000).roundToLong()
+        else UnitConverter.gallonsToLitersMilli(lInput)
 
-        val pricePerLiterDouble = if (unitSystem == UnitSystem.METRIC) {
-            pInput
-        } else {
-            pInput / UnitConverter.LITERS_PER_GALLON
-        }
+        val pricePerLiterDouble = if (unitSystem == UnitSystem.METRIC) pInput
+        else pInput / UnitConverter.LITERS_PER_GALLON
         val pricePerLiterCents = (pricePerLiterDouble * 100).roundToLong()
 
         viewModelScope.launch {
@@ -171,24 +178,24 @@ class FuelEditViewModel @Inject constructor(
                     id = expenseId,
                     vehicleId = vehicleId,
                     type = "FUEL",
-                    categoryId = selectedCategory!!.id,
+                    categoryId = currentCategory.id,
                     amountCents = (tInput * 100).roundToLong(),
-                    dateEpochDay = dateEpochDay,
+                    dateEpochDay = dateEpochDay.value,
                     odometer = odoKm,
-                    description = context.getString(R.string.fuel_edit_desc, selectedCategory!!.name.lowercase())
+                    description = context.getString(R.string.fuel_edit_desc, currentCategory.name.lowercase())
                 )
 
                 val fuelDetail = FuelDetailEntity(
                     expenseId = expenseId,
                     litersMilli = litersMilli,
                     pricePerLiterCents = pricePerLiterCents,
-                    fuelType = selectedCategory!!.name.uppercase(),
-                    station = station.takeIf { it.isNotBlank() },
-                    fullTank = isFullTank
+                    fuelType = currentCategory.name.uppercase(),
+                    station = station.value.takeIf { it.isNotBlank() },
+                    fullTank = isFullTank.value
                 )
 
                 var attachment: AttachmentEntity? = null
-                val currentUri = selectedImageUri
+                val currentUri = selectedImageUri.value
                 if (currentUri != null) {
                     val compressedUri = ImageUtils.compressAndSave(context, currentUri)
                     if (compressedUri != null) {
@@ -201,17 +208,15 @@ class FuelEditViewModel @Inject constructor(
                             bytes = fileSize
                         )
                     } else {
-                        warningMessage = "El ticket no se pudo procesar, pero la carga fue guardada."
+                        warningMessage = context.getString(R.string.fuel_edit_err_image)
                     }
                 }
 
                 expenseRepo.saveWithDetails(expense, fuelDetail, null, attachment)
 
-                if (odoKm != null && odoKm > 0) {
-                    vehicleRepo.bumpOdometerIfHigher(vehicleId, odoKm)
-                }
+                if (odoKm != null && odoKm > 0) vehicleRepo.bumpOdometerIfHigher(vehicleId, odoKm)
 
-                hasUnsavedChanges = false
+                savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
@@ -230,7 +235,19 @@ fun FuelEditScreen(
     vm: FuelEditViewModel = hiltViewModel()
 ) {
     val config = LocalAppConfig.current
-    val categories by vm.fuelCategories.collectAsState()
+    val categories by vm.fuelCategories.collectAsStateWithLifecycle()
+
+    val selectedCategory by vm.selectedCategory.collectAsStateWithLifecycle()
+    val dateEpochDay by vm.dateEpochDay.collectAsStateWithLifecycle()
+    val odometer by vm.odometer.collectAsStateWithLifecycle()
+    val liters by vm.liters.collectAsStateWithLifecycle()
+    val pricePerLiter by vm.pricePerLiter.collectAsStateWithLifecycle()
+    val total by vm.total.collectAsStateWithLifecycle()
+    val station by vm.station.collectAsStateWithLifecycle()
+    val isFullTank by vm.isFullTank.collectAsStateWithLifecycle()
+    val selectedImageUri by vm.selectedImageUri.collectAsStateWithLifecycle()
+    val hasUnsavedChanges by vm.hasUnsavedChanges.collectAsStateWithLifecycle()
+
     var expanded by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -240,34 +257,21 @@ fun FuelEditScreen(
     val focusManager = LocalFocusManager.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(categories) {
-        if (vm.selectedCategory == null && categories.isNotEmpty()) {
-            vm.selectedCategory = categories.firstOrNull { it.id == "fuel_gas" } ?: categories.first()
-        }
-    }
-
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) vm.updateImage(cameraUri)
-    }
+    ) { success -> if (success) vm.updateImage(cameraUri) }
 
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) vm.updateImage(uri)
-    }
+    ) { uri: Uri? -> if (uri != null) vm.updateImage(uri) }
 
     LaunchedEffect(vm.warningMessage) {
         vm.warningMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            vm.clearWarning()
+            snackbarHostState.showSnackbar(it); vm.clearWarning()
         }
     }
 
-    BackHandler(enabled = vm.hasUnsavedChanges) {
-        showDiscardDialog = true
-    }
+    BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -275,10 +279,9 @@ fun FuelEditScreen(
             title = { Text(stringResource(R.string.discard_changes_title)) },
             text = { Text(stringResource(R.string.discard_changes_msg)) },
             confirmButton = {
-                TextButton(onClick = {
-                    showDiscardDialog = false
-                    onDone()
-                }) { Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { showDiscardDialog = false; onDone() }) {
+                    Text(stringResource(R.string.action_discard), color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.action_keep_editing)) }
@@ -287,15 +290,16 @@ fun FuelEditScreen(
     }
 
     if (showDatePicker) {
-        val initialMillis = Instant.ofEpochSecond(vm.dateEpochDay * 86400).toEpochMilli()
+        // Fix: leer/escribir en UTC, no en systemDefault.
+        val initialMillis = LocalDate.ofEpochDay(dateEpochDay)
+            .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    state.selectedDateMillis?.let {
-                        val date = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
-                        vm.updateDate(date)
+                    state.selectedDateMillis?.let { millis ->
+                        vm.updateDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
                     }
                     showDatePicker = false
                 }) { Text(stringResource(R.string.action_ok)) }
@@ -314,7 +318,7 @@ fun FuelEditScreen(
                 title = { Text(stringResource(R.string.fuel_edit_title)) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone()
+                        if (hasUnsavedChanges) showDiscardDialog = true else onDone()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
@@ -326,13 +330,15 @@ fun FuelEditScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                 OutlinedTextField(
-                    value = vm.selectedCategory?.let { localizedCategoryName(it.id, it.name) } ?: stringResource(R.string.fuel_edit_select_type),
+                    value = selectedCategory?.let { localizedCategoryName(it.id, it.name) }
+                        ?: stringResource(R.string.fuel_edit_select_type),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text(stringResource(R.string.fuel_edit_type)) },
@@ -343,19 +349,15 @@ fun FuelEditScreen(
                     categories.forEach { category ->
                         DropdownMenuItem(
                             text = { Text(localizedCategoryName(category.id, category.name)) },
-                            onClick = {
-                                vm.updateCategory(category)
-                                expanded = false
-                            }
+                            onClick = { vm.updateCategory(category); expanded = false }
                         )
                     }
                 }
             }
 
-            // Campo Fecha
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = formatDate(vm.dateEpochDay),
+                    value = formatDate(dateEpochDay),
                     onValueChange = {},
                     readOnly = true,
                     enabled = false,
@@ -373,46 +375,37 @@ fun FuelEditScreen(
             }
 
             OutlinedTextField(
-                value = vm.odometer,
+                value = odometer,
                 onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.fuel_edit_odometer)) },
                 suffix = { Text(unitLabel) },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next
-                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = vm.liters,
+                    value = liters,
                     onValueChange = { vm.updateLiters(it) },
                     label = { Text(stringResource(R.string.fuel_edit_liters)) },
                     suffix = { Text(volumeLabel) },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                        imeAction = ImeAction.Next
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Right) }),
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
-                    value = vm.pricePerLiter,
+                    value = pricePerLiter,
                     onValueChange = { vm.updatePrice(it) },
                     label = { Text(stringResource(R.string.fuel_edit_price)) },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                        imeAction = ImeAction.Next
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                     modifier = Modifier.weight(1f)
                 )
             }
 
             CurrencyField(
-                value = vm.total,
+                value = total,
                 onValueChange = { vm.updateTotal(it) },
                 label = stringResource(R.string.fuel_edit_total),
                 currencyCode = config.currencyCode,
@@ -422,7 +415,7 @@ fun FuelEditScreen(
             )
 
             OutlinedTextField(
-                value = vm.station,
+                value = station,
                 onValueChange = { vm.updateStation(it) },
                 label = { Text(stringResource(R.string.fuel_edit_station)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -431,49 +424,45 @@ fun FuelEditScreen(
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(
-                    checked = vm.isFullTank,
-                    onCheckedChange = { vm.updateFullTank(it) }
-                )
+                Switch(checked = isFullTank, onCheckedChange = { vm.updateFullTank(it) })
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.fuel_edit_full_tank))
             }
 
-            // Botones Cámara / Galería
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
                         val uri = ImageUtils.createTempImageUri(context)
-                        if (uri != null) {
-                            cameraUri = uri
-                            cameraLauncher.launch(uri)
-                        }
+                        if (uri != null) { cameraUri = uri; cameraLauncher.launch(uri) }
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
                     Icon(Icons.Default.PhotoCamera, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text(if (vm.selectedImageUri == null) stringResource(R.string.expense_edit_camera) else stringResource(R.string.expense_edit_retake), maxLines = 1)
+                    Text(
+                        text = if (selectedImageUri == null) stringResource(R.string.expense_edit_camera) else stringResource(R.string.expense_edit_retake),
+                        style = MaterialTheme.typography.labelMedium
+                    )
                 }
                 OutlinedButton(
                     onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
                     Icon(Icons.Default.Image, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.expense_edit_gallery), maxLines = 1)
+                    Text(
+                        text = stringResource(R.string.expense_edit_gallery),
+                        style = MaterialTheme.typography.labelMedium
+                    )
                 }
             }
 
-            // Vista previa con botón para eliminar
-            if (vm.selectedImageUri != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                ) {
+            if (selectedImageUri != null) {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 250.dp)) {
                     AsyncImage(
-                        model = vm.selectedImageUri,
+                        model = selectedImageUri,
                         contentDescription = stringResource(R.string.expense_edit_receipt_desc),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -485,22 +474,16 @@ fun FuelEditScreen(
                             .padding(8.dp)
                             .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.expense_edit_delete_photo),
-                            tint = Color.White
-                        )
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.expense_edit_delete_photo), tint = Color.White)
                     }
                 }
             }
 
-            vm.error?.let {
-                Text(text = it, color = MaterialTheme.colorScheme.error)
-            }
+            vm.error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
             Button(
                 onClick = { vm.save(context, config.unitSystem, onDone) },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 enabled = !vm.isLoading
             ) {
                 if (vm.isLoading) {

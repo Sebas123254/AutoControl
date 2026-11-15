@@ -158,7 +158,11 @@ private fun MaintenanceDetailEntity.toDto() = MaintenanceDetailDto(expenseId, sc
 private fun DocumentEntity.toDto() = DocumentDto(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
 private fun AttachmentEntity.toDto() = AttachmentDto(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
 private fun MaintenanceScheduleEntity.toDto() = MaintenanceScheduleDto(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
-private fun ReminderEntity.toDto() = ReminderDto(id, vehicleId, sourceType, sourceId, title, body, triggerAtEpochMillis, enabled, lastNotifiedAt)
+private fun ReminderEntity.toDto() = ReminderDto(
+    id, vehicleId, sourceType, sourceId, title, body,
+    triggerAtEpochMillis, enabled, lastNotifiedAt,
+    templateKey, templateArgs
+)
 private fun GoalEntity.toDto() = GoalDto(id, vehicleId, title, notes, estimatedCents, estimatedMaxCents, priority, targetDateEpochDay, status, categoryId, createdAt, completedAt, linkedExpenseId)
 
 // --- Conversiones DTO -> Entity ---
@@ -172,5 +176,9 @@ private fun MaintenanceDetailDto.toEntity() = MaintenanceDetailEntity(expenseId,
 private fun DocumentDto.toEntity() = DocumentEntity(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
 private fun AttachmentDto.toEntity() = AttachmentEntity(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
 private fun MaintenanceScheduleDto.toEntity() = MaintenanceScheduleEntity(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
-private fun ReminderDto.toEntity() = ReminderEntity(id, vehicleId, sourceType, sourceId, title, body, triggerAtEpochMillis, enabled, lastNotifiedAt)
+private fun ReminderDto.toEntity() = ReminderEntity(
+    id, vehicleId, sourceType, sourceId, title, body,
+    triggerAtEpochMillis, enabled, lastNotifiedAt,
+    templateKey, templateArgs
+)
 private fun GoalDto.toEntity() = GoalEntity(id, vehicleId, title, notes, estimatedCents, estimatedMaxCents, priority, targetDateEpochDay, status, categoryId, createdAt, completedAt, linkedExpenseId)

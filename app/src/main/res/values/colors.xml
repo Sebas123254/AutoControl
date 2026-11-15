@@ -8,4 +8,6 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="notification_accent">#3A4757</color>
+    <!-- Fondo del splash: mismo que SurfaceLight del tema Compose -->
+    <color name="splash_background">#F6F7F9</color>
 </resources>

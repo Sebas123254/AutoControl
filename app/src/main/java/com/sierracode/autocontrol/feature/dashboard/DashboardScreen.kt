@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatCostPerDistance
@@ -101,6 +102,12 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /**
+     * Costo por km: gasto total histórico / km recorridos.
+     * Solo considera gastos que tienen odómetro válido para evitar subestimar
+     * los km recorridos (bug previo: usaba `vehicle.odometer` como fallback,
+     * lo cual inflaba el costo).
+     */
     val costPerKm = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(null) else combine(
             vehicleRepo.observe(id),
@@ -108,7 +115,8 @@ class DashboardViewModel @Inject constructor(
             expenseRepo.observeByVehicle(id)
         ) { vehicle, total, expenses ->
             if (vehicle == null || total == null || total == 0L) return@combine null
-            val minOdometer = expenses.minOfOrNull { it.odometer ?: vehicle.odometer } ?: vehicle.odometer
+            val minOdometer = expenses.mapNotNull { it.odometer }.minOrNull()
+                ?: return@combine null
             val kmRecorridos = vehicle.odometer - minOdometer
             if (kmRecorridos > 0) total.toDouble() / kmRecorridos else null
         }
@@ -154,7 +162,6 @@ class DashboardViewModel @Inject constructor(
             }
             val summary = summarizeFuel(points)
 
-            // CORRECCIÓN: Devolvemos la ID del string en lugar del texto duro
             val hintResId = when {
                 points.isEmpty() -> R.string.dashboard_maint_fuel_hint
                 points.any { it.odometer == null } -> R.string.dashboard_maint_odo_hint
@@ -213,15 +220,15 @@ fun DashboardScreen(
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
 
-    val vehicle by vm.vehicle.collectAsState()
-    val allVehicles by vm.allVehicles.collectAsState()
-    val totalSpent by vm.totalSpent.collectAsState()
-    val allTimeSpent by vm.allTimeSpent.collectAsState()
-    val dueReminders by vm.dueReminders.collectAsState()
-    val costPerKm by vm.costPerKm.collectAsState()
-    val fuelStats by vm.fuelStats.collectAsState()
-    val schedules by vm.schedules.collectAsState()
-    val selectedPeriod by vm.summaryPeriod.collectAsState()
+    val vehicle by vm.vehicle.collectAsStateWithLifecycle()
+    val allVehicles by vm.allVehicles.collectAsStateWithLifecycle()
+    val totalSpent by vm.totalSpent.collectAsStateWithLifecycle()
+    val allTimeSpent by vm.allTimeSpent.collectAsStateWithLifecycle()
+    val dueReminders by vm.dueReminders.collectAsStateWithLifecycle()
+    val costPerKm by vm.costPerKm.collectAsStateWithLifecycle()
+    val fuelStats by vm.fuelStats.collectAsStateWithLifecycle()
+    val schedules by vm.schedules.collectAsStateWithLifecycle()
+    val selectedPeriod by vm.summaryPeriod.collectAsStateWithLifecycle()
 
     var showAllSchedules by remember { mutableStateOf(false) }
     var scheduleToDelete by remember { mutableStateOf<EvaluatedSchedule?>(null) }
@@ -231,9 +238,16 @@ fun DashboardScreen(
     val hasPendingAlerts = schedules.any { it.urgency == Urgency.OVERDUE || it.urgency == Urgency.SOON } ||
             dueReminders.isNotEmpty()
 
-    // Pre-calculamos strings para los callbacks
     val deletedSnackbarTemplate = stringResource(R.string.vehicles_delete_maint_snackbar, "%s")
     val updatedSnackbar = stringResource(R.string.vehicles_maint_updated)
+    val errorIntervalMsg = stringResource(R.string.dashboard_maint_err_interval)
+    val errorNegativeMsg = stringResource(R.string.dashboard_maint_err_negative)
+    val deleteMaintLabel = stringResource(R.string.dashboard_maint_delete)
+    val cdReminders = stringResource(R.string.cd_reminders)
+    val cdSettings = stringResource(R.string.cd_settings)
+    val cdEditVehicle = stringResource(R.string.cd_edit_vehicle)
+    val cdSwitchVehicle = stringResource(R.string.cd_switch_vehicle)
+    val cdBackToVehicles = stringResource(R.string.cd_back_to_vehicles)
 
     if (scheduleToDelete != null) {
         AlertDialog(
@@ -245,7 +259,6 @@ fun DashboardScreen(
                     val nombre = scheduleToDelete!!.name
                     vm.deleteSchedule(scheduleToDelete!!.id)
                     scheduleToDelete = null
-                    // CORRECCIÓN: Usamos el template formateado
                     scope.launch { snackbarHostState.showSnackbar(deletedSnackbarTemplate.format(nombre)) }
                 }) {
                     Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
@@ -294,7 +307,11 @@ fun DashboardScreen(
 
         ModalBottomSheet(onDismissRequest = { vm.openScheduleEditor(null) }, sheetState = sheetState) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(16.dp)
+                    .padding(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(stringResource(R.string.vehicles_edit_maint_title, s.name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -337,11 +354,11 @@ fun DashboardScreen(
                     val newRemDays = remindBeforeDays.toIntOrNull() ?: 15
 
                     if ((newKm != null && newKm <= 0) || (newMonths != null && newMonths <= 0)) {
-                        errorMsg = "Los intervalos deben ser mayores a 0."
+                        errorMsg = errorIntervalMsg
                         return@Button
                     }
                     if (newRemKm < 0 || newRemDays < 0) {
-                        errorMsg = "Los avisos no pueden ser negativos."
+                        errorMsg = errorNegativeMsg
                         return@Button
                     }
 
@@ -363,7 +380,7 @@ fun DashboardScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(stringResource(R.string.action_delete) + " mantenimiento", color = MaterialTheme.colorScheme.error)
+                    Text(deleteMaintLabel, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -390,7 +407,7 @@ fun DashboardScreen(
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             if (canSwitch) {
-                                Icon(imageVector = Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.cd_switch_vehicle))
+                                Icon(imageVector = Icons.Default.KeyboardArrowDown, contentDescription = cdSwitchVehicle)
                             }
                         }
                         DropdownMenu(expanded = showSwitchMenu, onDismissRequest = { showSwitchMenu = false }) {
@@ -405,17 +422,17 @@ fun DashboardScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back_to_vehicles))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = cdBackToVehicles)
                     }
                 },
                 actions = {
                     IconButton(onClick = onOpenReminders) {
                         BadgedBox(badge = { if (hasPendingAlerts) { Badge(modifier = Modifier.padding(end = 4.dp)) } }) {
-                            Icon(Icons.Default.Notifications, contentDescription = "Recordatorios")
+                            Icon(Icons.Default.Notifications, contentDescription = cdReminders)
                         }
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Ajustes")
+                        Icon(Icons.Default.Settings, contentDescription = cdSettings)
                     }
                 }
             )
@@ -443,7 +460,7 @@ fun DashboardScreen(
                             Text("${formatKm(v.odometer)} • ${v.plates ?: stringResource(R.string.vehicles_no_plates)}", style = MaterialTheme.typography.bodyMedium)
                         }
                         IconButton(onClick = onEditVehicle) {
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_vehicle), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Edit, contentDescription = cdEditVehicle, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -568,7 +585,6 @@ fun DashboardScreen(
                 } else {
                     EmptyStateCard(
                         title = stringResource(R.string.dashboard_no_data),
-                        // CORRECCIÓN: Si hintResId es nulo, usamos el fallback
                         description = fuelStats?.hintResId?.let { stringResource(it) } ?: stringResource(R.string.dashboard_maint_full_hint),
                         actionLabel = stringResource(R.string.dashboard_register_fuel),
                         onActionClick = onRegisterFuel
@@ -636,7 +652,6 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
         Urgency.SOON -> MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    // CORRECCIÓN: Usamos stringResource para el estado
     val statusText = when (schedule.urgency) {
         Urgency.OVERDUE -> stringResource(R.string.cd_maint_overdue)
         Urgency.SOON -> stringResource(R.string.cd_maint_soon)

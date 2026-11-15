@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!--
+        Tema base de la app.
+        Se aplica DESPUÉS de que el splash nativo termina (via postSplashScreenTheme).
+    -->
     <style name="Theme.AutoControl" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+        Tema de arranque (cold start).
+        SplashScreen API: muestra fondo + icono animado durante el arranque y luego
+        transiciona a Theme.AutoControl.
+    -->
+    <style name="Theme.AutoControl.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/autocontrol_ico</item>
+        <item name="windowSplashScreenAnimationDuration">200</item>
+        <item name="postSplashScreenTheme">@style/Theme.AutoControl</item>
+    </style>
+
 </resources>

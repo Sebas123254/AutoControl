@@ -37,6 +37,7 @@ import java.io.File
 fun FullScreenImageDialog(imageUri: Uri, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val shareTitle = stringResource(R.string.expenses_share_title)
+    val imageUnavailableText = stringResource(R.string.image_not_available)
 
     // Estado para saber si la imagen falló al cargar (porque el archivo ya no existe)
     var hasError by remember { mutableStateOf(false) }
@@ -77,7 +78,7 @@ fun FullScreenImageDialog(imageUri: Uri, onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        text = "La imagen ya no está disponible en este dispositivo.",
+                        text = imageUnavailableText,
                         color = Color.White,
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
@@ -100,7 +101,7 @@ fun FullScreenImageDialog(imageUri: Uri, onDismiss: () -> Unit) {
                             translationY = offset.y
                         ),
                     contentScale = ContentScale.Fit,
-                    onError = { hasError = true } // <-- Captura el error
+                    onError = { hasError = true }
                 )
             }
 

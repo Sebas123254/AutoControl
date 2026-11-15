@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="new_expense"
+        android:enabled="true"
+        android:icon="@drawable/ic_notification"
+        android:shortcutShortLabel="@string/shortcut_new_expense_short"
+        android:shortcutLongLabel="@string/shortcut_new_expense_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.sierracode.autocontrol"
+            android:targetClass="com.sierracode.autocontrol.MainActivity"
+            android:data="autocontrol://action/new_expense" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_fuel"
+        android:enabled="true"
+        android:icon="@drawable/ic_notification"
+        android:shortcutShortLabel="@string/shortcut_new_fuel_short"
+        android:shortcutLongLabel="@string/shortcut_new_fuel_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.sierracode.autocontrol"
+            android:targetClass="com.sierracode.autocontrol.MainActivity"
+            android:data="autocontrol://action/new_fuel" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_maintenance"
+        android:enabled="true"
+        android:icon="@drawable/ic_notification"
+        android:shortcutShortLabel="@string/shortcut_new_maint_short"
+        android:shortcutLongLabel="@string/shortcut_new_maint_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.sierracode.autocontrol"
+            android:targetClass="com.sierracode.autocontrol.MainActivity"
+            android:data="autocontrol://action/new_maintenance" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+</shortcuts>

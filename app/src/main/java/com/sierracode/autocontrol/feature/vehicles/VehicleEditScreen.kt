@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
@@ -31,6 +32,7 @@ import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -41,100 +43,107 @@ import kotlin.math.roundToLong
 class VehicleEditViewModel @Inject constructor(
     private val repo: VehicleRepository,
     private val settingsStore: SettingsStore,
-    savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
-    private val vehicleId: String? = savedStateHandle["vehicleId"]
+    private val vehicleId: String? = savedStateHandle.get<String>("vehicleId")?.takeIf { it.isNotBlank() }
 
-    var brand by mutableStateOf("")
-    var model by mutableStateOf("")
-    var year by mutableStateOf("")
-    var plates by mutableStateOf("")
-    var odometer by mutableStateOf("")
-    var purchasePrice by mutableStateOf("")
-
-    var currencyCode by mutableStateOf("MXN")
-    var unitSystem by mutableStateOf("METRIC")
+    val brand: StateFlow<String> = savedStateHandle.getStateFlow("brand", "")
+    val model: StateFlow<String> = savedStateHandle.getStateFlow("model", "")
+    val year: StateFlow<String> = savedStateHandle.getStateFlow("year", "")
+    val plates: StateFlow<String> = savedStateHandle.getStateFlow("plates", "")
+    val odometer: StateFlow<String> = savedStateHandle.getStateFlow("odometer", "")
+    val purchasePrice: StateFlow<String> = savedStateHandle.getStateFlow("purchasePrice", "")
+    val currencyCode: StateFlow<String> = savedStateHandle.getStateFlow("currencyCode", "MXN")
+    val unitSystem: StateFlow<String> = savedStateHandle.getStateFlow("unitSystem", "METRIC")
+    val hasUnsavedChanges: StateFlow<Boolean> = savedStateHandle.getStateFlow("hasUnsavedChanges", false)
 
     var isLoading by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
-
-    var hasUnsavedChanges by mutableStateOf(false)
         private set
 
-    fun updateBrand(v: String) { brand = v; hasUnsavedChanges = true; error = null }
-    fun updateModel(v: String) { model = v; hasUnsavedChanges = true; error = null }
-    fun updateYear(v: String) { year = v; hasUnsavedChanges = true; error = null }
-    fun updatePlates(v: String) { plates = v; hasUnsavedChanges = true }
-    fun updateOdometer(v: String) { odometer = v; hasUnsavedChanges = true; error = null }
-    fun updatePurchasePrice(v: String) { purchasePrice = v; hasUnsavedChanges = true; error = null }
-    fun updateCurrency(v: String) { currencyCode = v; hasUnsavedChanges = true }
-    fun updateUnits(v: String) { unitSystem = v; hasUnsavedChanges = true }
-
     init {
-        if (vehicleId != null && vehicleId.isNotBlank()) {
-            viewModelScope.launch {
-                repo.get(vehicleId)?.let { v ->
-                    brand = v.brand
-                    model = v.model
-                    year = v.year.toString()
-                    plates = v.plates ?: ""
-
-                    unitSystem = v.unitSystem
-                    val odoDisplay = if (unitSystem == "METRIC") v.odometer else UnitConverter.kmToMiles(v.odometer).roundToLong()
-                    odometer = odoDisplay.toString()
-
-                    currencyCode = v.currencyCode
-                    purchasePrice = v.purchasePriceCents?.let { (it / 100.0).toString() } ?: ""
+        if (!savedStateHandle.contains("loadedFromDb")) {
+            if (vehicleId != null) {
+                viewModelScope.launch {
+                    repo.get(vehicleId)?.let { v ->
+                        savedStateHandle["brand"] = v.brand
+                        savedStateHandle["model"] = v.model
+                        savedStateHandle["year"] = v.year.toString()
+                        savedStateHandle["plates"] = v.plates ?: ""
+                        savedStateHandle["unitSystem"] = v.unitSystem
+                        val odoDisplay = if (v.unitSystem == "METRIC") v.odometer
+                        else UnitConverter.kmToMiles(v.odometer).roundToLong()
+                        savedStateHandle["odometer"] = odoDisplay.toString()
+                        savedStateHandle["currencyCode"] = v.currencyCode
+                        savedStateHandle["purchasePrice"] = v.purchasePriceCents?.let { (it / 100.0).toString() } ?: ""
+                    }
+                    savedStateHandle["loadedFromDb"] = true
                 }
-            }
-        } else {
-            viewModelScope.launch {
-                currencyCode = settingsStore.currencyCode.first()
-                unitSystem = settingsStore.unitSystem.first().name
+            } else {
+                viewModelScope.launch {
+                    savedStateHandle["currencyCode"] = settingsStore.currencyCode.first()
+                    savedStateHandle["unitSystem"] = settingsStore.unitSystem.first().name
+                    savedStateHandle["loadedFromDb"] = true
+                }
             }
         }
     }
 
+    fun updateBrand(v: String) { savedStateHandle["brand"] = v; markDirty(); error = null }
+    fun updateModel(v: String) { savedStateHandle["model"] = v; markDirty(); error = null }
+    fun updateYear(v: String) { savedStateHandle["year"] = v; markDirty(); error = null }
+    fun updatePlates(v: String) { savedStateHandle["plates"] = v; markDirty() }
+    fun updateOdometer(v: String) { savedStateHandle["odometer"] = v; markDirty(); error = null }
+    fun updatePurchasePrice(v: String) { savedStateHandle["purchasePrice"] = v; markDirty(); error = null }
+    fun updateCurrency(v: String) { savedStateHandle["currencyCode"] = v; markDirty() }
+    fun updateUnits(v: String) { savedStateHandle["unitSystem"] = v; markDirty() }
+    private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
+
     fun save(context: android.content.Context, onDone: () -> Unit) {
-        if (brand.isBlank() || model.isBlank() || year.isBlank() || odometer.isBlank()) {
-            error = context.getString(R.string.vehicles_err_required)
-            return
+        val currentBrand = brand.value
+        val currentModel = model.value
+        val currentYear = year.value
+        val currentOdometer = odometer.value
+
+        if (currentBrand.isBlank() || currentModel.isBlank() || currentYear.isBlank() || currentOdometer.isBlank()) {
+            error = context.getString(R.string.vehicles_err_required); return
         }
 
-        val yearInt = year.toIntOrNull()
-        val currentYear = LocalDate.now().year
-        if (yearInt == null || yearInt < 1900 || yearInt > currentYear + 1) {
-            error = context.getString(R.string.vehicles_err_year, currentYear + 1)
-            return
+        val yearInt = currentYear.toIntOrNull()
+        val currentYearInt = LocalDate.now().year
+        if (yearInt == null || yearInt < 1900 || yearInt > currentYearInt + 1) {
+            error = context.getString(R.string.vehicles_err_year, currentYearInt + 1); return
         }
 
-        val priceDouble = purchasePrice.toDoubleOrNull()
-        if (purchasePrice.isNotBlank() && (priceDouble == null || priceDouble < 0 || priceDouble > 10_000_000.0)) {
-            error = context.getString(R.string.vehicles_err_price)
-            return
+        val priceDouble = purchasePrice.value.toDoubleOrNull()
+        if (purchasePrice.value.isNotBlank() && (priceDouble == null || priceDouble < 0 || priceDouble > 10_000_000.0)) {
+            error = context.getString(R.string.vehicles_err_price); return
         }
 
         val priceCents = priceDouble?.times(100)?.roundToLong()
-        val odoInput = odometer.toDoubleOrNull() ?: 0.0
-        val odoKm = if (unitSystem == "METRIC") odoInput.roundToLong() else UnitConverter.milesToKm(odoInput)
+        val odoInput = currentOdometer.toDoubleOrNull() ?: 0.0
+        val currentUnitSystem = unitSystem.value
+        val odoKm = if (currentUnitSystem == "METRIC") odoInput.roundToLong()
+        else UnitConverter.milesToKm(odoInput)
 
         viewModelScope.launch {
             isLoading = true
             try {
                 val vehicle = VehicleEntity(
-                    id = vehicleId?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString(),
-                    brand = brand,
-                    model = model,
+                    id = vehicleId ?: java.util.UUID.randomUUID().toString(),
+                    brand = currentBrand,
+                    model = currentModel,
                     year = yearInt,
-                    plates = plates.takeIf { it.isNotBlank() },
+                    plates = plates.value.takeIf { it.isNotBlank() },
                     odometer = odoKm,
-                    currencyCode = currencyCode,
-                    unitSystem = unitSystem,
+                    currencyCode = currencyCode.value,
+                    unitSystem = currentUnitSystem,
                     purchasePriceCents = priceCents
                 )
                 repo.upsert(vehicle)
                 settingsStore.setActiveVehicle(vehicle.id)
-                hasUnsavedChanges = false
+                savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
             } catch (e: Exception) {
                 error = context.getString(R.string.vehicles_err_generic, e.message ?: "")
@@ -154,12 +163,23 @@ fun VehicleEditScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+
+    val brand by vm.brand.collectAsStateWithLifecycle()
+    val model by vm.model.collectAsStateWithLifecycle()
+    val year by vm.year.collectAsStateWithLifecycle()
+    val plates by vm.plates.collectAsStateWithLifecycle()
+    val odometer by vm.odometer.collectAsStateWithLifecycle()
+    val purchasePrice by vm.purchasePrice.collectAsStateWithLifecycle()
+    val currencyCode by vm.currencyCode.collectAsStateWithLifecycle()
+    val unitSystem by vm.unitSystem.collectAsStateWithLifecycle()
+    val hasUnsavedChanges by vm.hasUnsavedChanges.collectAsStateWithLifecycle()
+
     var expandedCurrency by remember { mutableStateOf(false) }
     var expandedUnits by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     val isEditing = vehicleId != null
 
-    BackHandler(enabled = vm.hasUnsavedChanges) { showDiscardDialog = true }
+    BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
     if (showDiscardDialog) {
         AlertDialog(
@@ -182,7 +202,7 @@ fun VehicleEditScreen(
             TopAppBar(
                 title = { Text(stringResource(if (vehicleId == null) R.string.vehicles_new_title else R.string.vehicles_edit_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { if (vm.hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
+                    IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDone() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
@@ -190,11 +210,16 @@ fun VehicleEditScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(
-                value = vm.brand,
+                value = brand,
                 onValueChange = { vm.updateBrand(it) },
                 label = { Text(stringResource(R.string.vehicles_brand_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -202,7 +227,7 @@ fun VehicleEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
-                value = vm.model,
+                value = model,
                 onValueChange = { vm.updateModel(it) },
                 label = { Text(stringResource(R.string.vehicles_model_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -210,7 +235,7 @@ fun VehicleEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
-                value = vm.year,
+                value = year,
                 onValueChange = { vm.updateYear(it) },
                 label = { Text(stringResource(R.string.vehicles_year_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
@@ -218,7 +243,7 @@ fun VehicleEditScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
-                value = vm.plates,
+                value = plates,
                 onValueChange = { vm.updatePlates(it) },
                 label = { Text(stringResource(R.string.vehicles_plates_label)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -234,7 +259,7 @@ fun VehicleEditScreen(
                 onExpandedChange = { if (!isEditing) expandedUnits = !expandedUnits }
             ) {
                 OutlinedTextField(
-                    value = if (vm.unitSystem == "METRIC") stringResource(R.string.settings_metric) else stringResource(R.string.settings_imperial),
+                    value = if (unitSystem == "METRIC") stringResource(R.string.settings_metric) else stringResource(R.string.settings_imperial),
                     onValueChange = {},
                     readOnly = true,
                     enabled = !isEditing,
@@ -243,14 +268,23 @@ fun VehicleEditScreen(
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
                 ExposedDropdownMenu(expanded = expandedUnits, onDismissRequest = { expandedUnits = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.settings_metric)) }, onClick = { vm.updateUnits("METRIC"); expandedUnits = false })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.settings_imperial)) }, onClick = { vm.updateUnits("US"); expandedUnits = false })
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.settings_metric)) },
+                        onClick = { vm.updateUnits("METRIC"); expandedUnits = false }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.settings_imperial)) },
+                        onClick = { vm.updateUnits("US"); expandedUnits = false }
+                    )
                 }
             }
 
-            ExposedDropdownMenuBox(expanded = expandedCurrency, onExpandedChange = { if (!isEditing) expandedCurrency = !expandedCurrency }) {
+            ExposedDropdownMenuBox(
+                expanded = expandedCurrency,
+                onExpandedChange = { if (!isEditing) expandedCurrency = !expandedCurrency }
+            ) {
                 OutlinedTextField(
-                    value = vm.currencyCode,
+                    value = currencyCode,
                     onValueChange = {},
                     readOnly = true,
                     enabled = !isEditing,
@@ -260,7 +294,10 @@ fun VehicleEditScreen(
                 )
                 ExposedDropdownMenu(expanded = expandedCurrency, onDismissRequest = { expandedCurrency = false }) {
                     listOf("MXN", "USD", "CAD", "EUR", "GBP").forEach { code ->
-                        DropdownMenuItem(text = { Text(code) }, onClick = { vm.updateCurrency(code); expandedCurrency = false })
+                        DropdownMenuItem(
+                            text = { Text(code) },
+                            onClick = { vm.updateCurrency(code); expandedCurrency = false }
+                        )
                     }
                 }
             }
@@ -268,20 +305,20 @@ fun VehicleEditScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             OutlinedTextField(
-                value = vm.odometer,
+                value = odometer,
                 onValueChange = { vm.updateOdometer(it) },
                 label = { Text(stringResource(R.string.vehicles_odometer_label)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
-                suffix = { Text(if (vm.unitSystem == "METRIC") "km" else "mi") },
+                suffix = { Text(if (unitSystem == "METRIC") "km" else "mi") },
                 modifier = Modifier.fillMaxWidth()
             )
 
             CurrencyField(
-                value = vm.purchasePrice,
+                value = purchasePrice,
                 onValueChange = { vm.updatePurchasePrice(it) },
                 label = stringResource(R.string.vehicles_price_label),
-                currencyCode = vm.currencyCode,
+                currencyCode = currencyCode,
                 imeAction = ImeAction.Done,
                 onImeAction = { focusManager.clearFocus() },
                 modifier = Modifier.fillMaxWidth()
@@ -296,7 +333,7 @@ fun VehicleEditScreen(
                         onDone()
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 enabled = !vm.isLoading
             ) {
                 if (vm.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)

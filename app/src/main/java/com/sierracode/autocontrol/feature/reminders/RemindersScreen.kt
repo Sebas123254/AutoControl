@@ -12,17 +12,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
+import com.sierracode.autocontrol.core.ui.components.showUndoSnackbar
 import com.sierracode.autocontrol.data.local.entity.ReminderEntity
 import com.sierracode.autocontrol.data.repository.ReminderRepository
+import com.sierracode.autocontrol.domain.reminder.ReminderResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,16 +60,17 @@ class RemindersViewModel @Inject constructor(
         }
     }
 
-    fun deleteReminder(id: String) {
-        viewModelScope.launch {
-            reminderRepo.deleteById(id)
-        }
+    suspend fun deleteReminder(id: String) {
+        reminderRepo.deleteById(id)
+    }
+
+    fun restoreReminder(reminder: ReminderEntity) {
+        viewModelScope.launch { reminderRepo.upsert(reminder) }
     }
 
     fun snoozeReminder(reminder: ReminderEntity, days: Int) {
         viewModelScope.launch {
             val newTrigger = System.currentTimeMillis() + (days * 24L * 60L * 60L * 1000L)
-            // Posponemos actualizando la fecha de disparo y reseteando el aviso
             reminderRepo.upsert(
                 reminder.copy(
                     triggerAtEpochMillis = newTrigger,
@@ -87,27 +92,27 @@ fun RemindersScreen(
         vm.loadVehicle(vehicleId)
     }
 
-    val reminders by vm.reminders.collectAsState()
-    var reminderToDelete by remember { mutableStateOf<ReminderEntity?>(null) }
+    val reminders by vm.reminders.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    if (reminderToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { reminderToDelete = null },
-            title = { Text(stringResource(R.string.reminders_delete_title)) },
-            text = { Text(stringResource(R.string.reminders_delete_desc)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteReminder(reminderToDelete!!.id)
-                    reminderToDelete = null
-                }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { reminderToDelete = null }) { Text(stringResource(R.string.action_cancel)) }
+    val undoLabel = stringResource(R.string.action_undo)
+
+    val deleteWithUndo: (ReminderEntity) -> Unit = { reminder ->
+        scope.launch {
+            vm.deleteReminder(reminder.id)
+            snackbarHostState.showUndoSnackbar(
+                message = context.getString(R.string.reminder_deleted),
+                actionLabel = undoLabel
+            ) {
+                vm.restoreReminder(reminder)
             }
-        )
+        }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.reminders_title), fontWeight = FontWeight.Bold) },
@@ -137,7 +142,7 @@ fun RemindersScreen(
                     ReminderCard(
                         reminder = reminder,
                         onToggle = { enabled -> vm.toggleReminder(reminder, enabled) },
-                        onDelete = { reminderToDelete = reminder },
+                        onDelete = { deleteWithUndo(reminder) },
                         onSnooze = { days -> vm.snoozeReminder(reminder, days) }
                     )
                 }
@@ -153,6 +158,12 @@ fun ReminderCard(
     onDelete: () -> Unit,
     onSnooze: (Int) -> Unit
 ) {
+    val context = LocalContext.current
+
+    // Resolver title/body con los templates del idioma actual.
+    val displayTitle = ReminderResolver.resolveTitle(context, reminder)
+    val displayBody = ReminderResolver.resolveBody(context, reminder)
+
     val dateEpochDay = Instant.ofEpochMilli(reminder.triggerAtEpochMillis)
         .atZone(ZoneId.systemDefault())
         .toLocalDate()
@@ -168,12 +179,12 @@ fun ReminderCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = reminder.title,
+                    text = displayTitle,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = reminder.body,
+                    text = displayBody,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -185,7 +196,6 @@ fun ReminderCard(
                 )
             }
 
-            // Botón de Posponer
             Box {
                 IconButton(onClick = { showSnoozeMenu = true }) {
                     Icon(
@@ -215,13 +225,11 @@ fun ReminderCard(
                 }
             }
 
-            // Switch de activar/desactivar
             Switch(
                 checked = reminder.enabled,
                 onCheckedChange = onToggle
             )
 
-            // Botón de eliminar
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,

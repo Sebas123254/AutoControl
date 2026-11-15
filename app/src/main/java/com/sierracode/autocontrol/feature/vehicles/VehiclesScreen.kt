@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatKm
@@ -48,6 +49,9 @@ class VehiclesViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun setActiveVehicle(id: String) = viewModelScope.launch { settings.setActiveVehicle(id) }
+
+    /** Activa o desactiva Pro desde el dialog de límite. En MVP funciona como toggle demo. */
+    fun setPro(value: Boolean) = viewModelScope.launch { settings.setPro(value) }
 
     fun deleteVehicles(ids: List<String>) = viewModelScope.launch {
         repo.deleteMultiple(ids)
@@ -91,8 +95,8 @@ fun VehiclesScreen(
     onOpenSettings: () -> Unit,
     vm: VehiclesViewModel = hiltViewModel()
 ) {
-    val vehicles by vm.vehicles.collectAsState()
-    val isPro by vm.isPro.collectAsState()
+    val vehicles by vm.vehicles.collectAsStateWithLifecycle()
+    val isPro by vm.isPro.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showImportDialog by remember { mutableStateOf(false) }
@@ -105,7 +109,12 @@ fun VehiclesScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Cambio a "application/zip" y nombre de archivo .zip
+    val backupSuccessText = stringResource(R.string.vehicles_backup_success)
+    val backupErrorText = stringResource(R.string.vehicles_backup_error)
+    val restoreSuccessText = stringResource(R.string.vehicles_restore_success)
+    val restoreErrorText = stringResource(R.string.vehicles_restore_error)
+    val proActivatedText = stringResource(R.string.vehicles_pro_activated)
+
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
@@ -113,8 +122,7 @@ fun VehiclesScreen(
         vm.exportData(uri, context) { success ->
             scope.launch {
                 snackbarHostState.showSnackbar(
-                    if (success) "Respaldo guardado correctamente"
-                    else "No se pudo guardar el respaldo"
+                    if (success) backupSuccessText else backupErrorText
                 )
             }
         }
@@ -127,8 +135,7 @@ fun VehiclesScreen(
         vm.importData(uri, context) { success ->
             scope.launch {
                 snackbarHostState.showSnackbar(
-                    if (success) "Respaldo restaurado correctamente"
-                    else "No se pudo restaurar el respaldo"
+                    if (success) restoreSuccessText else restoreErrorText
                 )
             }
         }
@@ -142,7 +149,6 @@ fun VehiclesScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showImportDialog = false
-                    // Permitimos zip y json para compatibilidad
                     openDocumentLauncher.launch(arrayOf("application/zip", "application/json"))
                 }) { Text(stringResource(R.string.action_yes_restore), color = MaterialTheme.colorScheme.error) }
             },
@@ -182,8 +188,17 @@ fun VehiclesScreen(
             title = { Text(stringResource(R.string.vehicles_pro_title)) },
             text = { Text(stringResource(R.string.vehicles_pro_desc)) },
             confirmButton = {
+                TextButton(onClick = {
+                    showProDialog = false
+                    vm.setPro(true)
+                    scope.launch { snackbarHostState.showSnackbar(proActivatedText) }
+                }) {
+                    Text(stringResource(R.string.vehicles_pro_activate))
+                }
+            },
+            dismissButton = {
                 TextButton(onClick = { showProDialog = false }) {
-                    Text(stringResource(R.string.action_understood))
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -331,7 +346,7 @@ fun VehicleCard(
                 Text(formatKm(vehicle.odometer), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
             if (isSelectionMode) {
-                Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+                Checkbox(checked = isSelected, onCheckedChange = null)
             } else {
                 IconButton(onClick = onEditClick) {
                     Icon(

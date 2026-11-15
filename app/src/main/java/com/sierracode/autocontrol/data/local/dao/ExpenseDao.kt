@@ -19,11 +19,13 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM expenses WHERE id = :id") suspend fun get(id: String): ExpenseEntity?
 
+    /** Reactivo: para ExpenseDetailScreen (se actualiza si se restaura tras undo). */
+    @Query("SELECT * FROM expenses WHERE id = :id") fun observeOne(id: String): Flow<ExpenseEntity?>
+
     @Upsert suspend fun upsert(e: ExpenseEntity)
 
     @Query("DELETE FROM expenses WHERE id = :id") suspend fun delete(id: String)
 
-    // --- NUEVO: Borrado múltiple ---
     @Query("DELETE FROM expenses WHERE id IN (:ids)") suspend fun deleteByIds(ids: List<String>)
 
     @Query("SELECT SUM(amountCents) FROM expenses WHERE vehicleId = :vehicleId AND dateEpochDay BETWEEN :from AND :to")
@@ -35,6 +37,13 @@ interface ExpenseDao {
         GROUP BY categoryId
     """)
     fun observeByCategory(vehicleId: String, from: Long, to: Long): Flow<List<CategoryTotalRow>>
+
+    // --- Nuevos: lookups para el detalle ---
+    @Query("SELECT * FROM fuel_details WHERE expenseId = :id")
+    suspend fun getFuelDetail(id: String): FuelDetailEntity?
+
+    @Query("SELECT * FROM maintenance_details WHERE expenseId = :id")
+    suspend fun getMaintenanceDetail(id: String): MaintenanceDetailEntity?
 }
 
 data class CategoryTotalRow(val categoryId: String, val totalCents: Long, val count: Int)

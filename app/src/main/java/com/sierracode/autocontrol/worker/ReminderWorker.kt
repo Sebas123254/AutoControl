@@ -30,16 +30,11 @@ class ReminderWorker @AssistedInject constructor(
         val dueReminders = reminderRepo.getDueReminders(now, startOfDay)
 
         for (reminder in dueReminders) {
-            Notifications.show(
-                context = applicationContext,
-                id = reminder.id,
-                title = reminder.title,
-                body = reminder.body,
-                vehicleId = reminder.vehicleId,
-                sourceType = reminder.sourceType,
-                sourceId = reminder.sourceId
-            )
-            reminderRepo.markNotified(reminder.id, now)
+            // Overload que resuelve título/cuerpo con el locale del sistema.
+            val shown = Notifications.show(applicationContext, reminder)
+            if (shown) {
+                reminderRepo.markNotified(reminder.id, now)
+            }
         }
 
         return Result.success()

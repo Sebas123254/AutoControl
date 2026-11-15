@@ -12,6 +12,10 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE id = :id")
     suspend fun getById(id: String): DocumentEntity?
 
+    /** Reactivo: para DocumentDetailScreen (se actualiza tras undo o edición). */
+    @Query("SELECT * FROM documents WHERE id = :id")
+    fun observeOne(id: String): Flow<DocumentEntity?>
+
     @Query("SELECT * FROM documents") suspend fun getAllOnce(): List<DocumentEntity>
 
     @Upsert suspend fun upsert(d: DocumentEntity)

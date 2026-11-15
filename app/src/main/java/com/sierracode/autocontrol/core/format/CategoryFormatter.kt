@@ -58,3 +58,19 @@ fun localizedPriority(priority: String): String {
         else -> priority
     }
 }
+
+/**
+ * Traduce el `type` persistido en `DocumentEntity` (SEGURO / CIRCULACION / ...)
+ * al idioma actual. Usado en `DocumentsScreen` y `DocumentDetailScreen`.
+ */
+@Composable
+fun localizedDocumentType(type: String): String {
+    return when (type) {
+        "SEGURO" -> stringResource(R.string.doc_type_insurance)
+        "CIRCULACION" -> stringResource(R.string.doc_type_circulation)
+        "VERIFICACION" -> stringResource(R.string.doc_type_verification)
+        "FACTURA" -> stringResource(R.string.doc_type_invoice)
+        "OTRO" -> stringResource(R.string.doc_type_other)
+        else -> type
+    }
+}
