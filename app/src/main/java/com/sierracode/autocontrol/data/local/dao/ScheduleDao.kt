@@ -12,12 +12,15 @@ interface ScheduleDao {
     @Query("SELECT * FROM maintenance_schedules WHERE vehicleId = :v AND name = :name AND active = 1 LIMIT 1")
     suspend fun getActiveByName(v: String, name: String): MaintenanceScheduleEntity?
 
+    /** Para ReminderWorker: obtener el schedule por id para calcular stage real. */
+    @Query("SELECT * FROM maintenance_schedules WHERE id = :id")
+    suspend fun getById(id: String): MaintenanceScheduleEntity?
+
     @Query("DELETE FROM maintenance_schedules WHERE id = :id")
     suspend fun deleteById(id: String)
 
     @Upsert suspend fun upsert(s: MaintenanceScheduleEntity)
 
-    // --- NUEVOS PARA BACKUP ---
     @Query("SELECT * FROM maintenance_schedules") suspend fun getAllOnce(): List<MaintenanceScheduleEntity>
     @Query("DELETE FROM maintenance_schedules") suspend fun deleteAll()
 }

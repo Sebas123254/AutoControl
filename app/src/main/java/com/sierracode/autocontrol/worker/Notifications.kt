@@ -18,6 +18,16 @@ object Notifications {
     private const val CHANNEL_MAINTENANCE = "autocontrol_maintenance_v1"
     private const val CHANNEL_DOCUMENTS = "autocontrol_documents_v1"
     private const val GROUP_KEY = "autocontrol_reminders_group"
+    private const val SUMMARY_ID = "summary"
+
+    data class SummaryItem(
+        val reminderId: String,
+        val vehicleId: String,
+        val sourceType: String,
+        val sourceId: String,
+        val title: String,
+        val body: String
+    )
 
     /**
      * Publica la notificación de un [ReminderEntity] resolviendo título y
@@ -37,9 +47,6 @@ object Notifications {
         )
     }
 
-    /**
-     * Variante legacy usada por callers que ya tienen title/body resueltos.
-     */
     fun show(
         context: Context,
         id: String,
@@ -99,29 +106,82 @@ object Notifications {
             .setGroupSummary(false)
             .addAction(
                 NotificationCompat.Action.Builder(
-                    0,
-                    context.getString(R.string.notif_action_view),
-                    contentPendingIntent
+                    0, context.getString(R.string.notif_action_view), contentPendingIntent
                 ).build()
             )
             .addAction(
                 NotificationCompat.Action.Builder(
-                    0,
-                    context.getString(R.string.notif_action_snooze_1h),
-                    snooze1hPendingIntent
+                    0, context.getString(R.string.notif_action_snooze_1h), snooze1hPendingIntent
                 ).build()
             )
             .addAction(
                 NotificationCompat.Action.Builder(
-                    0,
-                    context.getString(R.string.notif_action_snooze_1d),
-                    snooze1dPendingIntent
+                    0, context.getString(R.string.notif_action_snooze_1d), snooze1dPendingIntent
                 ).build()
             )
             .build()
 
         return try {
             NotificationManagerCompat.from(context).notify(requestCode, notification)
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
+    /**
+     * Notificación resumen (InboxStyle) que agrupa varios recordatorios del día
+     * para no inundar al usuario con una notificación por cada uno.
+     */
+    fun showSummary(context: Context, items: List<SummaryItem>): Boolean {
+        if (items.isEmpty()) return false
+
+        // Elegimos el canal del primer item (los que no tienen clasificación van a maintenance).
+        val channelId = channelFor(items.first().sourceType)
+        ensureChannel(context, channelId)
+
+        val title = context.getString(R.string.notif_summary_title, items.size)
+        val summaryText = context.getString(R.string.notif_summary_body, items.size)
+
+        // Intent al primer vehículo (más accionable que ir a la lista vacía).
+        val firstVehicleId = items.first().vehicleId
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("vehicleId", firstVehicleId)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            SUMMARY_ID.hashCode(),
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val inboxStyle = NotificationCompat.InboxStyle()
+            .setBigContentTitle(title)
+            .setSummaryText(summaryText)
+        items.take(5).forEach { item ->
+            inboxStyle.addLine("• ${item.title}")
+        }
+        if (items.size > 5) {
+            inboxStyle.addLine(context.getString(R.string.notif_summary_more, items.size - 5))
+        }
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(context, R.color.notification_accent))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentTitle(title)
+            .setContentText(summaryText)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(contentPendingIntent)
+            .setAutoCancel(true)
+            .setGroup(GROUP_KEY)
+            .setGroupSummary(true)
+            .setStyle(inboxStyle)
+            .build()
+
+        return try {
+            NotificationManagerCompat.from(context).notify(SUMMARY_ID.hashCode(), notification)
             true
         } catch (e: SecurityException) {
             false

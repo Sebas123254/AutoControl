@@ -14,7 +14,7 @@ import com.sierracode.autocontrol.data.local.entity.*
         MaintenanceScheduleEntity::class, DocumentEntity::class,
         AttachmentEntity::class, ReminderEntity::class, GoalEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AutoControlDatabase : RoomDatabase() {
@@ -89,10 +89,6 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE reminders ADD COLUMN templateKey TEXT")
         database.execSQL("ALTER TABLE reminders ADD COLUMN templateArgs TEXT")
-
-        // Backfill: inferir templateKey según sourceType. Los recordatorios
-        // viejos no tienen templateArgs, así que ReminderResolver caerá al
-        // title/body persistido (comportamiento idéntico al previo).
         database.execSQL(
             "UPDATE reminders SET templateKey = 'document_expiring' " +
                     "WHERE sourceType = 'DOCUMENT' AND templateKey IS NULL"
@@ -101,5 +97,36 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
             "UPDATE reminders SET templateKey = 'maintenance_due' " +
                     "WHERE sourceType = 'MAINTENANCE' AND templateKey IS NULL"
         )
+    }
+}
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // 1. Nuevo campo para evitar repetir el mismo hito de notificación.
+        // NULL = nunca notificado en su ciclo actual.
+        database.execSQL("ALTER TABLE reminders ADD COLUMN lastNotifiedStage TEXT")
+
+        // 2. Backfill: como el bug anterior hacía que se notificara CADA DÍA
+        // después del trigger, marcamos todos los reminders viejos como
+        // "ya notificados" para detener el spam inmediatamente. Si el usuario
+        // edita el reminder (cambia fecha), el registro se re-crea con stage=null
+        // y empieza a notificar de nuevo.
+        database.execSQL("UPDATE reminders SET lastNotifiedStage = 'legacy_migrated' WHERE enabled = 1")
+
+        // 3. Deduplicación: el bug anterior creaba un reminder NUEVO cada vez
+        // que se editaba un mantenimiento, sin borrar el anterior. Nos quedamos
+        // solo con el reminder que tenga el triggerAtEpochMillis MÁS RECIENTE
+        // (el que refleja el próximo servicio real).
+        database.execSQL("""
+            DELETE FROM reminders
+            WHERE id NOT IN (
+                SELECT r.id FROM reminders r
+                WHERE r.triggerAtEpochMillis = (
+                    SELECT MAX(r2.triggerAtEpochMillis)
+                    FROM reminders r2
+                    WHERE r2.sourceType = r.sourceType AND r2.sourceId = r.sourceId
+                )
+            )
+        """.trimIndent())
     }
 }

@@ -60,6 +60,7 @@ class FuelRepositoryImpl @Inject constructor(private val dao: FuelDao) : FuelRep
 interface ScheduleRepository {
     fun observeActive(vehicleId: String): Flow<List<MaintenanceScheduleEntity>>
     suspend fun getActiveByName(vehicleId: String, name: String): MaintenanceScheduleEntity?
+    suspend fun getById(id: String): MaintenanceScheduleEntity?
     suspend fun upsert(schedule: MaintenanceScheduleEntity)
     suspend fun delete(scheduleId: String)
     suspend fun getAllOnce(): List<MaintenanceScheduleEntity>
@@ -70,6 +71,7 @@ interface ScheduleRepository {
 class ScheduleRepositoryImpl @Inject constructor(private val dao: ScheduleDao) : ScheduleRepository {
     override fun observeActive(vehicleId: String) = dao.observeActive(vehicleId)
     override suspend fun getActiveByName(vehicleId: String, name: String) = dao.getActiveByName(vehicleId, name)
+    override suspend fun getById(id: String) = dao.getById(id)
     override suspend fun upsert(schedule: MaintenanceScheduleEntity) = dao.upsert(schedule)
     override suspend fun delete(scheduleId: String) = dao.deleteById(scheduleId)
     override suspend fun getAllOnce() = dao.getAllOnce()
@@ -85,6 +87,7 @@ interface ReminderRepository {
     suspend fun deleteById(id: String)
     suspend fun deleteAll()
     suspend fun markNotified(id: String, time: Long)
+    suspend fun updateLastNotifiedStage(id: String, stage: String?, timestamp: Long)
     suspend fun getAllOnce(): List<ReminderEntity>
 }
 
@@ -97,5 +100,7 @@ class ReminderRepositoryImpl @Inject constructor(private val dao: ReminderDao) :
     override suspend fun deleteById(id: String) = dao.deleteById(id)
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun markNotified(id: String, time: Long) = dao.markNotified(id, time)
+    override suspend fun updateLastNotifiedStage(id: String, stage: String?, timestamp: Long) =
+        dao.updateLastNotifiedStage(id, stage, timestamp)
     override suspend fun getAllOnce() = dao.getAllOnce()
 }

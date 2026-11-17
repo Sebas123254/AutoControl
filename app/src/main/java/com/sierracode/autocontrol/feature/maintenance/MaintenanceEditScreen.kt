@@ -233,6 +233,10 @@ class MaintenanceEditViewModel @Inject constructor(
                     val triggerDate = nextServiceDate.minusDays(remindDays)
                     val triggerMillis = triggerDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
+                    // Borrar el reminder previo (si existía) para resetear
+                    // el stage y evitar acumulación de reminders del mismo schedule.
+                    reminderRepo.deleteBySource("MAINTENANCE", finalSchedule.id)
+
                     val reminder = ReminderEntity(
                         vehicleId = vehicleId,
                         sourceType = "MAINTENANCE",
@@ -241,7 +245,8 @@ class MaintenanceEditViewModel @Inject constructor(
                         body = "Tu vehículo podría necesitar este servicio pronto.",
                         triggerAtEpochMillis = triggerMillis,
                         templateKey = "maintenance_due",
-                        templateArgs = ReminderResolver.encodeMaintenanceDueArgs(currentCategory.name)
+                        templateArgs = ReminderResolver.encodeMaintenanceDueArgs(currentCategory.name),
+                        lastNotifiedStage = null
                     )
                     reminderRepo.upsert(reminder)
                 }

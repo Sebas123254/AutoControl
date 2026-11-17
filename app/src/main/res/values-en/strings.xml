@@ -126,6 +126,9 @@
     <string name="vehicles_restore_error">Could not restore the backup</string>
     <string name="vehicles_pro_activated">Pro activated. You can add unlimited vehicles.</string>
     <string name="vehicles_pro_activate">Activate Pro</string>
+    <string name="notif_summary_title">%1$d upcoming reminders</string>
+    <string name="notif_summary_body">You have %1$d reminders that need your attention</string>
+    <string name="notif_summary_more">and %1$d more…</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">Home</string>
@@ -514,6 +517,16 @@
     <string name="doc_detail_issue_date_label">Issue date</string>
     <string name="doc_detail_expiry_date_label">Expiry date</string>
     <string name="doc_detail_lead_days_label">Lead days</string>
+
+    <string name="reminder_label_document">Document: %1$s</string>
+    <string name="reminder_label_maintenance">Maintenance: %1$s</string>
+    <string name="reminder_status_expired_days">Expired %1$d days ago</string>
+    <string name="reminder_status_expires_today">Expires today</string>
+    <string name="reminder_status_expires_tomorrow">Expires tomorrow</string>
+    <string name="reminder_status_expires_in_days">In %1$d days</string>
+    <string name="reminder_status_km_remaining">%1$s remaining</string>
+    <string name="reminder_status_km_overdue">Overdue by km</string>
+    <string name="reminder_status_scheduled">Scheduled</string>
 
     <plurals name="expenses_count">
         <item quantity="one">%d expense</item>

@@ -126,6 +126,9 @@
     <string name="vehicles_restore_error">No se pudo restaurar el respaldo</string>
     <string name="vehicles_pro_activated">Pro activado. Puedes agregar vehículos ilimitados.</string>
     <string name="vehicles_pro_activate">Activar Pro</string>
+    <string name="vehicles_restore_success_full">Restaurado: %1$d registros y %2$d imágenes</string>
+    <string name="vehicles_restore_success_no_images">Restaurado: %1$d registros (el respaldo no incluía imágenes)</string>
+    <string name="vehicles_restore_success_with_failures">Restaurado: %1$d registros, %2$d imágenes. %3$d no se pudieron recuperar</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">Inicio</string>
@@ -502,6 +505,9 @@
     <string name="notif_doc_expiring_body">Tu documento vence pronto. ¡Revisa AutoControl!</string>
     <string name="notif_maint_due_title">Mantenimiento: %1$s</string>
     <string name="notif_maint_due_body">Tu vehículo podría necesitar este servicio pronto.</string>
+    <string name="notif_summary_title">%1$d recordatorios próximos</string>
+    <string name="notif_summary_body">Tienes %1$d avisos que requieren tu atención</string>
+    <string name="notif_summary_more">y %1$d más…</string>
 
     <!-- App Shortcuts -->
     <string name="shortcut_new_expense_short">Nuevo gasto</string>
@@ -515,6 +521,16 @@
     <string name="doc_detail_issue_date_label">Fecha de expedición</string>
     <string name="doc_detail_expiry_date_label">Fecha de vencimiento</string>
     <string name="doc_detail_lead_days_label">Días de anticipación</string>
+
+    <string name="reminder_label_document">Documento: %1$s</string>
+    <string name="reminder_label_maintenance">Mantenimiento: %1$s</string>
+    <string name="reminder_status_expired_days">Vencido hace %1$d días</string>
+    <string name="reminder_status_expires_today">Vence hoy</string>
+    <string name="reminder_status_expires_tomorrow">Vence mañana</string>
+    <string name="reminder_status_expires_in_days">En %1$d días</string>
+    <string name="reminder_status_km_remaining">Faltan %1$s</string>
+    <string name="reminder_status_km_overdue">Vencido por km</string>
+    <string name="reminder_status_scheduled">Programado</string>
 
     <plurals name="expenses_count">
         <item quantity="one">%d gasto</item>

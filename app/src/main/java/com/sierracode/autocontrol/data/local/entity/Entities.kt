@@ -161,7 +161,14 @@ data class ReminderEntity(
     /** Identificador del template: "document_expiring", "maintenance_due", etc. */
     val templateKey: String? = null,
     /** JSON serializado con los args del template. Ej: {"documentName":"Póliza"} */
-    val templateArgs: String? = null
+    val templateArgs: String? = null,
+    /**
+     * Último hito notificado para evitar repetir el mismo aviso día tras día.
+     * Valores: "date_30d", "date_7d", "date_1d", "date_0d", "km_500", "km_100", "km_0",
+     * o combinaciones "date_30d|km_500" si aplican ambos.
+     * NULL = nunca se ha notificado este reminder en su ciclo actual.
+     */
+    val lastNotifiedStage: String? = null
 )
 
 @Entity(

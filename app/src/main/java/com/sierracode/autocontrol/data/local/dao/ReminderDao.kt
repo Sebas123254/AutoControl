@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ReminderDao {
+
+    /** Recordatorios que estaban programados para hoy o antes y no se han notificado hoy. */
     @Query("SELECT * FROM reminders WHERE enabled = 1 AND triggerAtEpochMillis <= :now AND (lastNotifiedAt IS NULL OR lastNotifiedAt < :startOfDay)")
     suspend fun getDueReminders(now: Long, startOfDay: Long): List<ReminderEntity>
 
@@ -20,12 +22,18 @@ interface ReminderDao {
     @Query("DELETE FROM reminders WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    // ESTA ES LA QUE FALTABA:
     @Query("DELETE FROM reminders")
     suspend fun deleteAll()
 
     @Query("UPDATE reminders SET lastNotifiedAt = :time WHERE id = :id")
     suspend fun markNotified(id: String, time: Long)
-    // --- NUEVO PARA BACKUP ---
+
+    /**
+     * Actualiza el hito notificado + timestamp, en una sola operación.
+     * Se usa desde ReminderWorker para evitar notificaciones repetidas.
+     */
+    @Query("UPDATE reminders SET lastNotifiedStage = :stage, lastNotifiedAt = :timestamp WHERE id = :id")
+    suspend fun updateLastNotifiedStage(id: String, stage: String?, timestamp: Long)
+
     @Query("SELECT * FROM reminders") suspend fun getAllOnce(): List<ReminderEntity>
 }

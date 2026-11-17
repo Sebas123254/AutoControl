@@ -26,6 +26,7 @@ import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.data.backup.BackupManager
+import com.sierracode.autocontrol.data.backup.ImportSummary
 import com.sierracode.autocontrol.data.local.entity.VehicleEntity
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.VehicleRepository
@@ -49,8 +50,6 @@ class VehiclesViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun setActiveVehicle(id: String) = viewModelScope.launch { settings.setActiveVehicle(id) }
-
-    /** Activa o desactiva Pro desde el dialog de límite. En MVP funciona como toggle demo. */
     fun setPro(value: Boolean) = viewModelScope.launch { settings.setPro(value) }
 
     fun deleteVehicles(ids: List<String>) = viewModelScope.launch {
@@ -72,15 +71,18 @@ class VehiclesViewModel @Inject constructor(
         }
     }
 
-    fun importData(uri: Uri, context: android.content.Context, onResult: (Boolean) -> Unit) {
+    fun importData(
+        uri: Uri,
+        context: android.content.Context,
+        onResult: (Result<ImportSummary>) -> Unit
+    ) {
         viewModelScope.launch {
             try {
-                context.contentResolver.openInputStream(uri)?.use {
-                    val result = backupManager.importFromJson(it)
-                    onResult(result.isSuccess)
-                }
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    onResult(backupManager.importFromJson(input))
+                } ?: onResult(Result.failure(Exception("No se pudo abrir el archivo")))
             } catch (e: Exception) {
-                onResult(false)
+                onResult(Result.failure(e))
             }
         }
     }
@@ -111,8 +113,6 @@ fun VehiclesScreen(
 
     val backupSuccessText = stringResource(R.string.vehicles_backup_success)
     val backupErrorText = stringResource(R.string.vehicles_backup_error)
-    val restoreSuccessText = stringResource(R.string.vehicles_restore_success)
-    val restoreErrorText = stringResource(R.string.vehicles_restore_error)
     val proActivatedText = stringResource(R.string.vehicles_pro_activated)
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -121,9 +121,7 @@ fun VehiclesScreen(
         if (uri == null) return@rememberLauncherForActivityResult
         vm.exportData(uri, context) { success ->
             scope.launch {
-                snackbarHostState.showSnackbar(
-                    if (success) backupSuccessText else backupErrorText
-                )
+                snackbarHostState.showSnackbar(if (success) backupSuccessText else backupErrorText)
             }
         }
     }
@@ -132,11 +130,36 @@ fun VehiclesScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        vm.importData(uri, context) { success ->
+        vm.importData(uri, context) { result ->
             scope.launch {
-                snackbarHostState.showSnackbar(
-                    if (success) restoreSuccessText else restoreErrorText
+                val msg = result.fold(
+                    onSuccess = { summary ->
+                        when {
+                            !summary.hadImagesInZip && summary.totalRecords == 0 ->
+                                context.getString(R.string.vehicles_restore_error)
+                            !summary.hadImagesInZip ->
+                                context.getString(
+                                    R.string.vehicles_restore_success_no_images,
+                                    summary.totalRecords
+                                )
+                            summary.imagesMissing > 0 || summary.imagesFailed > 0 ->
+                                context.getString(
+                                    R.string.vehicles_restore_success_with_failures,
+                                    summary.totalRecords,
+                                    summary.imagesExtracted,
+                                    summary.imagesMissing + summary.imagesFailed
+                                )
+                            else ->
+                                context.getString(
+                                    R.string.vehicles_restore_success_full,
+                                    summary.totalRecords,
+                                    summary.imagesExtracted
+                                )
+                        }
+                    },
+                    onFailure = { context.getString(R.string.vehicles_restore_error) }
                 )
+                snackbarHostState.showSnackbar(msg)
             }
         }
     }
