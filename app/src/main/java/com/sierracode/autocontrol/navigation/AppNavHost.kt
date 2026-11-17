@@ -1,16 +1,11 @@
 package com.sierracode.autocontrol.navigation
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,13 +25,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 
-/**
- * Intención de navegación que llega desde fuera del NavHost:
- * - Notificación: sourceType + sourceId
- * - App Shortcut: action (ej. "new_expense", "new_fuel")
- *
- * Ambos casos tienen vehicleId.
- */
 data class NavIntent(
     val vehicleId: String,
     val sourceType: String? = null,
@@ -75,90 +63,66 @@ fun AppNavHost(
 
     val onboarded by settings.onboarded.collectAsStateWithLifecycle(initialValue = null)
 
+    // El splash nativo (installSplashScreen) cubre el arranque. Ya no necesitamos
+    // el composable SplashScreen duplicado.
     if (onboarded == null) {
-        SplashScreen()
-    } else {
-        LaunchedEffect(navIntent, onboarded) {
-            if (navIntent != null && onboarded == true) {
-                nav.navigate(Route.Main.build(navIntent.vehicleId)) {
-                    popUpTo(Route.Vehicles.path) { inclusive = false }
-                    launchSingleTop = true
-                }
-            }
+        // Este Box es solo un placeholder para no mostrar la UI antes de tiempo.
+        // El splash nativo sigue visible hasta que `onboarded` se resuelva.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+        return
+    }
 
-        NavHost(
-            navController = nav,
-            startDestination = if (onboarded == true) Route.Vehicles.path else Route.Onboarding.path
-        ) {
-            composable(Route.Onboarding.path) {
-                OnboardingScreen(onDone = { nav.navigate(Route.Vehicles.path) { popUpTo(0) } })
-            }
-            composable(Route.Vehicles.path) {
-                VehiclesScreen(
-                    onAddClick = { nav.navigate(Route.VehicleEdit.build(null)) },
-                    onVehicleClick = { id -> nav.navigate(Route.Main.build(id)) },
-                    onEditClick = { id -> nav.navigate(Route.VehicleEdit.build(id)) },
-                    onOpenSettings = { nav.navigate(Route.Settings.path) }
-                )
-            }
-            composable(Route.Settings.path) {
-                SettingsScreen(onBack = { nav.popBackStack() })
-            }
-            composable(Route.VehicleEdit.path) { back ->
-                val vehicleId = back.arguments?.getString("vehicleId")?.takeIf { it.isNotBlank() }
-                VehicleEditScreen(vehicleId = vehicleId, onDone = { nav.popBackStack() })
-            }
-            composable(Route.Main.path) { back ->
-                val id = back.arguments!!.getString("vehicleId")!!
-                LaunchedEffect(id) { settings.setActiveVehicle(id) }
-                MainScreen(
-                    vehicleId = id,
-                    navIntent = navIntent,
-                    onIntentConsumed = onIntentConsumed,
-                    onBackToVehicles = { nav.popBackStack() },
-                    onOpenSettings = { nav.navigate(Route.Settings.path) },
-                    onEditVehicle = { nav.navigate(Route.VehicleEdit.build(id)) },
-                    onSwitchVehicle = { newId ->
-                        if (newId != id) {
-                            nav.navigate(Route.Main.build(newId)) {
-                                popUpTo(Route.Main.path) { inclusive = true }
-                            }
-                        }
-                    }
-                )
+    LaunchedEffect(navIntent, onboarded) {
+        if (navIntent != null && onboarded == true) {
+            nav.navigate(Route.Main.build(navIntent.vehicleId)) {
+                popUpTo(Route.Vehicles.path) { inclusive = false }
+                launchSingleTop = true
             }
         }
     }
-}
 
-@Composable
-fun SplashScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
+    NavHost(
+        navController = nav,
+        startDestination = if (onboarded == true) Route.Vehicles.path else Route.Onboarding.path
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(
-                painter = painterResource(id = R.drawable.autocontrol_ico),
-                contentDescription = stringResource(R.string.splash_logo_cd),
-                modifier = Modifier.size(150.dp).clip(RoundedCornerShape(32.dp))
+        composable(Route.Onboarding.path) {
+            OnboardingScreen(onDone = { nav.navigate(Route.Vehicles.path) { popUpTo(0) } })
+        }
+        composable(Route.Vehicles.path) {
+            VehiclesScreen(
+                onAddClick = { nav.navigate(Route.VehicleEdit.build(null)) },
+                onVehicleClick = { id -> nav.navigate(Route.Main.build(id)) },
+                onEditClick = { id -> nav.navigate(Route.VehicleEdit.build(id)) },
+                onOpenSettings = { nav.navigate(Route.Settings.path) }
             )
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+        }
+        composable(Route.Settings.path) {
+            SettingsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Route.VehicleEdit.path) { back ->
+            val vehicleId = back.arguments?.getString("vehicleId")?.takeIf { it.isNotBlank() }
+            VehicleEditScreen(vehicleId = vehicleId, onDone = { nav.popBackStack() })
+        }
+        composable(Route.Main.path) { back ->
+            val id = back.arguments!!.getString("vehicleId")!!
+            LaunchedEffect(id) { settings.setActiveVehicle(id) }
+            MainScreen(
+                vehicleId = id,
+                navIntent = navIntent,
+                onIntentConsumed = onIntentConsumed,
+                onBackToVehicles = { nav.popBackStack() },
+                onOpenSettings = { nav.navigate(Route.Settings.path) },
+                onEditVehicle = { nav.navigate(Route.VehicleEdit.build(id)) },
+                onSwitchVehicle = { newId ->
+                    if (newId != id) {
+                        nav.navigate(Route.Main.build(newId)) {
+                            popUpTo(Route.Main.path) { inclusive = true }
+                        }
+                    }
+                }
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.splash_tagline),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(48.dp))
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     }
 }

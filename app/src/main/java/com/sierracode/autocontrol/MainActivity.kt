@@ -33,11 +33,23 @@ class MainActivity : ComponentActivity() {
     private var navIntent by mutableStateOf<NavIntent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        // Mantener splash hasta que onboarded se resuelva (evita flash blanco).
+        var keepSplash = true
+        splash.setKeepOnScreenCondition { keepSplash }
+        lifecycleScope.launch {
+            settingsStore.onboarded.first()
+            keepSplash = false
+        }
+
         enableEdgeToEdge()
 
-        handleIntent(intent)
+        // Solo procesar intent en arranque en frío (no en rotación/recreación).
+        if (savedInstanceState == null) {
+            handleIntent(intent)
+        }
 
         setContent {
             val vm: MainActivityViewModel = hiltViewModel()
@@ -69,7 +81,6 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
 
-        // --- App Shortcuts: autocontrol://action/new_expense ---
         val data = intent.data
         if (data?.scheme == "autocontrol" && data.host == "action") {
             val action = data.pathSegments.firstOrNull() ?: return
@@ -78,12 +89,10 @@ class MainActivity : ComponentActivity() {
                 if (vehicleId != null) {
                     navIntent = NavIntent(vehicleId = vehicleId, action = action)
                 }
-                // Sin vehículo activo: se abre la pantalla normal de Vehicles.
             }
             return
         }
 
-        // --- Notificaciones: vehicleId + sourceType + sourceId ---
         val vehicleId = intent.getStringExtra("vehicleId")
         val sourceType = intent.getStringExtra("sourceType")
         val sourceId = intent.getStringExtra("sourceId")

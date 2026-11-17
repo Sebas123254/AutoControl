@@ -14,7 +14,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AutoControl"
         android:enableOnBackInvokedCallback="true"
-        tools:targetApi="34">
+        tools:targetApi="36">
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -29,6 +29,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.AutoControl.Starting">
 
             <intent-filter>
@@ -36,14 +37,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Necesario para recibir el Intent de los App Shortcuts. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="autocontrol" android:host="action" />
             </intent-filter>
 
-            <!-- Registro de App Shortcuts (long-press en el ícono). -->
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />

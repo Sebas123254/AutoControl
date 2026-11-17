@@ -518,6 +518,7 @@
     <string name="shortcut_new_maint_long">Registrar un mantenimiento</string>
     <string name="shortcut_disabled">Este atajo no está disponible</string>
 
+
     <string name="doc_detail_issue_date_label">Fecha de expedición</string>
     <string name="doc_detail_expiry_date_label">Fecha de vencimiento</string>
     <string name="doc_detail_lead_days_label">Días de anticipación</string>
