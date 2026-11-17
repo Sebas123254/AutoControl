@@ -12,11 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Recibe acciones de las notificaciones (snooze) sin abrir la app.
- * Usa `goAsync()` para poder hacer trabajo de I/O (Room + WorkManager)
- * sin bloquear el hilo principal del sistema.
- */
 @AndroidEntryPoint
 class NotificationActionReceiver : BroadcastReceiver() {
 
@@ -37,21 +32,20 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
         scope.launch {
             try {
-                val reminder = reminderRepo.getAllOnce().find { it.id == reminderId } ?: return@launch
+                val reminder = reminderRepo.getById(reminderId) ?: return@launch
                 val snoozeUntil = System.currentTimeMillis() + delayMillis
 
+                // Al posponer, reseteamos el stage para que cuando llegue la nueva hora,
+                // el worker detecte el hito como "no notificado" y vuelva a avisar.
                 reminderRepo.upsert(
                     reminder.copy(
                         triggerAtEpochMillis = snoozeUntil,
-                        lastNotifiedAt = null
+                        lastNotifiedAt = null,
+                        lastNotifiedStage = null
                     )
                 )
 
-                // Cerrar la notificación original (ya la estamos "consumiendo").
                 NotificationManagerCompat.from(context).cancel(reminderId.hashCode())
-
-                // Reprogramar un worker one-shot para que dispare exactamente
-                // a la hora del snooze (el worker diario correría hasta mañana).
                 ReminderScheduler.scheduleSnooze(context, reminderId, delayMillis)
             } catch (e: Exception) {
                 e.printStackTrace()

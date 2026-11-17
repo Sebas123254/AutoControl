@@ -5,11 +5,8 @@ import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.dao.DocumentDao
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
-import com.sierracode.autocontrol.data.local.entity.ReminderEntity
-import com.sierracode.autocontrol.domain.reminder.ReminderResolver
+import com.sierracode.autocontrol.domain.reminder.ReminderPlanner
 import kotlinx.coroutines.flow.Flow
-import java.time.LocalDate
-import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,21 +17,15 @@ interface DocumentRepository {
     suspend fun save(document: DocumentEntity)
     suspend fun delete(id: String)
     suspend fun deleteMultiple(ids: List<String>)
-
-    /**
-     * Borra el documento de Room + su recordatorio, PERO NO el archivo físico.
-     * Se usa para undo: si el usuario hace undo, el archivo sigue ahí.
-     */
     suspend fun deleteDeferred(id: String)
-
-    /** Elimina el archivo físico. Solo cuando el undo NO se toma. */
     fun purgeFile(fileUri: String?)
 }
 
 @Singleton
 class DocumentRepositoryImpl @Inject constructor(
     private val dao: DocumentDao,
-    private val db: AutoControlDatabase
+    private val db: AutoControlDatabase,
+    private val reminderPlanner: ReminderPlanner
 ) : DocumentRepository {
     override fun observeByVehicle(vehicleId: String) = dao.observeAll(vehicleId)
     override fun observeOne(id: String) = dao.observeOne(id)
@@ -43,29 +34,11 @@ class DocumentRepositoryImpl @Inject constructor(
     override suspend fun save(document: DocumentEntity) {
         db.withTransaction {
             dao.upsert(document)
-
-            db.reminderDao().deleteBySource("DOCUMENT", document.id)
-
-            val expiry = document.expiryDateEpochDay ?: return@withTransaction
-            val triggerDay = expiry - document.reminderLeadDays
-
-            val triggerMillis = LocalDate.ofEpochDay(triggerDay)
-                .atStartOfDay(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
-
-            val reminder = ReminderEntity(
-                vehicleId = document.vehicleId,
-                sourceType = "DOCUMENT",
-                sourceId = document.id,
-                title = "Documento por vencer: ${document.name}",
-                body = "Tu documento vence pronto. ¡Revisa AutoControl!",
-                triggerAtEpochMillis = triggerMillis,
-                templateKey = "document_expiring",
-                templateArgs = ReminderResolver.encodeDocumentExpiringArgs(document.name)
-            )
-            db.reminderDao().upsert(reminder)
         }
+        // Fuera de la transacción de Room principal para no mezclar lógica de negocio con el guardado puro
+        // Si falla el planner, el documento ya está guardado, pero se puede reintentar.
+        // (Aceptable para MVP, idealmente todo en la misma transacción).
+        reminderPlanner.planDocument(document)
     }
 
     override suspend fun delete(id: String) {

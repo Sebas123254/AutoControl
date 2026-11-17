@@ -1,5 +1,7 @@
 package com.sierracode.autocontrol.data.repository
 
+import androidx.room.withTransaction
+import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.dao.*
 import com.sierracode.autocontrol.data.local.entity.*
 import kotlinx.coroutines.flow.Flow
@@ -68,38 +70,47 @@ interface ScheduleRepository {
 }
 
 @Singleton
-class ScheduleRepositoryImpl @Inject constructor(private val dao: ScheduleDao) : ScheduleRepository {
+class ScheduleRepositoryImpl @Inject constructor(
+    private val dao: ScheduleDao,
+    private val db: AutoControlDatabase
+) : ScheduleRepository {
     override fun observeActive(vehicleId: String) = dao.observeActive(vehicleId)
     override suspend fun getActiveByName(vehicleId: String, name: String) = dao.getActiveByName(vehicleId, name)
     override suspend fun getById(id: String) = dao.getById(id)
     override suspend fun upsert(schedule: MaintenanceScheduleEntity) = dao.upsert(schedule)
-    override suspend fun delete(scheduleId: String) = dao.deleteById(scheduleId)
+
+    override suspend fun delete(scheduleId: String) {
+        db.withTransaction {
+            dao.deleteById(scheduleId)
+            // Borrar el recordatorio asociado en la misma transacción para evitar huérfanos
+            db.reminderDao().deleteBySource("MAINTENANCE", scheduleId)
+        }
+    }
+
     override suspend fun getAllOnce() = dao.getAllOnce()
     override suspend fun deleteAll() = dao.deleteAll()
 }
 
 // --- REMINDER REPOSITORY ---
 interface ReminderRepository {
-    suspend fun getDueReminders(now: Long, startOfDay: Long): List<ReminderEntity>
     fun observeByVehicle(vehicleId: String): Flow<List<ReminderEntity>>
+    suspend fun getById(id: String): ReminderEntity?
     suspend fun upsert(reminder: ReminderEntity)
     suspend fun deleteBySource(type: String, sourceId: String)
     suspend fun deleteById(id: String)
     suspend fun deleteAll()
-    suspend fun markNotified(id: String, time: Long)
     suspend fun updateLastNotifiedStage(id: String, stage: String?, timestamp: Long)
     suspend fun getAllOnce(): List<ReminderEntity>
 }
 
 @Singleton
 class ReminderRepositoryImpl @Inject constructor(private val dao: ReminderDao) : ReminderRepository {
-    override suspend fun getDueReminders(now: Long, startOfDay: Long) = dao.getDueReminders(now, startOfDay)
     override fun observeByVehicle(vehicleId: String) = dao.observeByVehicle(vehicleId)
+    override suspend fun getById(id: String) = dao.getById(id)
     override suspend fun upsert(reminder: ReminderEntity) = dao.upsert(reminder)
     override suspend fun deleteBySource(type: String, sourceId: String) = dao.deleteBySource(type, sourceId)
     override suspend fun deleteById(id: String) = dao.deleteById(id)
     override suspend fun deleteAll() = dao.deleteAll()
-    override suspend fun markNotified(id: String, time: Long) = dao.markNotified(id, time)
     override suspend fun updateLastNotifiedStage(id: String, stage: String?, timestamp: Long) =
         dao.updateLastNotifiedStage(id, stage, timestamp)
     override suspend fun getAllOnce() = dao.getAllOnce()

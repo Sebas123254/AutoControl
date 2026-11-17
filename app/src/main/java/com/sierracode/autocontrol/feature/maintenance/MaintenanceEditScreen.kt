@@ -53,7 +53,7 @@ import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.*
 import com.sierracode.autocontrol.domain.calc.UnitConverter
-import com.sierracode.autocontrol.domain.reminder.ReminderResolver
+import com.sierracode.autocontrol.domain.reminder.ReminderPlanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -64,7 +64,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 import javax.inject.Inject
@@ -75,8 +74,8 @@ class MaintenanceEditViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val vehicleRepo: VehicleRepository,
     private val scheduleRepo: ScheduleRepository,
-    private val reminderRepo: ReminderRepository,
     private val settingsStore: SettingsStore,
+    private val reminderPlanner: ReminderPlanner, // NUEVO: inyectado para gestionar recordatorios
     categoryRepo: CategoryRepository,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -208,7 +207,8 @@ class MaintenanceEditViewModel @Inject constructor(
                             name = currentCategory.name,
                             intervalKm = nextOdoKm - odoKm,
                             lastOdometer = odoKm,
-                            lastDateEpochDay = dateEpochDay.value
+                            lastDateEpochDay = dateEpochDay.value,
+                            intervalMonths = null // Aseguramos que sea null para mantenimientos por km
                         )
                         scheduleRepo.upsert(newSchedule)
                         updatedScheduleId = newSchedule.id
@@ -226,29 +226,9 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
+                // Delegar la creación del recordatorio al ReminderPlanner
                 if (finalSchedule != null) {
-                    val remindDays = finalSchedule.remindBeforeDays.toLong()
-                    val intervalMonths = finalSchedule.intervalMonths?.toLong() ?: 6L
-                    val nextServiceDate = LocalDate.ofEpochDay(dateEpochDay.value).plusMonths(intervalMonths)
-                    val triggerDate = nextServiceDate.minusDays(remindDays)
-                    val triggerMillis = triggerDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-                    // Borrar el reminder previo (si existía) para resetear
-                    // el stage y evitar acumulación de reminders del mismo schedule.
-                    reminderRepo.deleteBySource("MAINTENANCE", finalSchedule.id)
-
-                    val reminder = ReminderEntity(
-                        vehicleId = vehicleId,
-                        sourceType = "MAINTENANCE",
-                        sourceId = finalSchedule.id,
-                        title = "Mantenimiento: ${currentCategory.name}",
-                        body = "Tu vehículo podría necesitar este servicio pronto.",
-                        triggerAtEpochMillis = triggerMillis,
-                        templateKey = "maintenance_due",
-                        templateArgs = ReminderResolver.encodeMaintenanceDueArgs(currentCategory.name),
-                        lastNotifiedStage = null
-                    )
-                    reminderRepo.upsert(reminder)
+                    reminderPlanner.planMaintenance(finalSchedule, currentCategory.name)
                 }
 
                 if (odoKm != null && odoKm > 0) vehicleRepo.bumpOdometerIfHigher(vehicleId, odoKm)
@@ -322,7 +302,7 @@ fun MaintenanceEditScreen(
     }
 
     if (showDatePicker) {
-        // Fix: UTC end-to-end.
+        // Fix: UTC end-to-end para evitar desfase de un día
         val initialMillis = LocalDate.ofEpochDay(dateEpochDay)
             .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
