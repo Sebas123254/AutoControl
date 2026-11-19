@@ -540,6 +540,54 @@
     <string name="reminder_status_km_overdue">Vencido por km</string>
     <string name="reminder_status_scheduled">Programado</string>
 
+    <!-- Onboarding v2 -->
+    <string name="onboard_page_indicator">Página %1$d de %2$d</string>
+
+    <string name="onboard_p1_title">¿Sabes cuánto te cuesta tu auto?</string>
+    <string name="onboard_p1_desc">Casi nadie lo sabe hasta que el dinero ya se fue. AutoControl te lo muestra claro, sin hojas de cálculo ni libretas.</string>
+    <string name="onboard_q1">¿Cuánto gastaste este mes?</string>
+    <string name="onboard_q2">¿Cuándo toca el próximo servicio?</string>
+    <string name="onboard_q3">¿Cuándo vence tu seguro?</string>
+
+    <string name="onboard_p2_title">Cada gasto, bajo control</string>
+    <string name="onboard_p2_desc">Registra gasolina, reparaciones, seguro y más. Descubre cuánto te cuesta cada kilómetro y en qué se te va el dinero.</string>
+
+    <string name="onboard_p3_title">Conoce el rendimiento real de tu auto</string>
+    <string name="onboard_p3_desc">Registra cada carga y mira cuántos kilómetros haces por litro. Detecta a tiempo si tu auto está gastando de más.</string>
+
+    <string name="onboard_p4_title">Mantenimiento sin sorpresas</string>
+    <string name="onboard_p4_desc">Programa servicios por fecha o por kilometraje y evita averías y reparaciones caras por un descuido.</string>
+
+    <string name="onboard_p5_title">Nunca más un trámite vencido</string>
+    <string name="onboard_p5_desc">Guarda tu seguro, verificación y tarjeta de circulación con foto. Te avisamos antes de que venzan.</string>
+
+    <string name="onboard_p6_title">Decide con datos y planea lo que viene</string>
+    <string name="onboard_p6_desc">Mira tus gastos por mes y por categoría, y crea objetivos para lo que sigue: llantas, pintura, el próximo servicio.</string>
+
+    <string name="onboard_p7_title">Tuyo, simple y privado</string>
+    <string name="onboard_p7_desc">Todo se guarda en tu teléfono. Agrega tu primer auto: te toma menos de un minuto.</string>
+    <string name="onboard_check_1">Sin cuenta ni registro</string>
+    <string name="onboard_check_2">Funciona sin internet</string>
+    <string name="onboard_check_3">Respaldo y restauración cuando quieras</string>
+    <string name="onboard_check_4">Tu divisa y tus unidades: km o millas</string>
+
+    <string name="onboard_mock_cost_per_km">Costo por kilómetro</string>
+    <string name="onboard_mock_fuel">Gasolina</string>
+    <string name="onboard_mock_oil">Aceite y filtro</string>
+    <string name="onboard_mock_insurance">Seguro</string>
+    <string name="onboard_mock_efficiency">Rendimiento real</string>
+    <string name="onboard_mock_full_tank">Tanque lleno registrado</string>
+    <string name="onboard_mock_oil_change">Cambio de aceite</string>
+    <string name="onboard_mock_brakes">Frenos</string>
+    <string name="onboard_mock_km_left">Faltan %1$s km</string>
+    <string name="onboard_mock_notif_title">AutoControl · Recordatorio</string>
+    <string name="onboard_mock_notif_text">Tu seguro vence en 7 días</string>
+    <string name="onboard_mock_doc_inspection">Verificación</string>
+    <string name="onboard_mock_doc_registration">Tarjeta de circulación</string>
+    <string name="onboard_mock_in_days">En %1$d días</string>
+    <string name="onboard_mock_goal">Pintar el carro</string>
+    <string name="onboard_mock_goal_progress">Ahorrado $4,800 de $12,000</string>
+
     <plurals name="expenses_count">
         <item quantity="one">%d gasto</item>
         <item quantity="other">%d gastos</item>

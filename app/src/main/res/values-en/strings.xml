@@ -538,6 +538,54 @@
     <string name="reminder_status_km_overdue">Overdue by km</string>
     <string name="reminder_status_scheduled">Scheduled</string>
 
+    <!-- Onboarding v2 -->
+    <string name="onboard_page_indicator">Page %1$d of %2$d</string>
+
+    <string name="onboard_p1_title">Do you know what your car really costs you?</string>
+    <string name="onboard_p1_desc">Almost nobody does until the money is already gone. AutoControl shows it clearly, with no spreadsheets or notebooks.</string>
+    <string name="onboard_q1">How much did you spend this month?</string>
+    <string name="onboard_q2">When is your next service due?</string>
+    <string name="onboard_q3">When does your insurance expire?</string>
+
+    <string name="onboard_p2_title">Every expense under control</string>
+    <string name="onboard_p2_desc">Log fuel, repairs, insurance and more. See what each kilometer costs you and where your money goes.</string>
+
+    <string name="onboard_p3_title">Know your car\'s real mileage</string>
+    <string name="onboard_p3_desc">Log every fill-up and see how far you really go on each tank. Spot early when your car is using more than it should.</string>
+
+    <string name="onboard_p4_title">Maintenance without surprises</string>
+    <string name="onboard_p4_desc">Schedule services by date or mileage and avoid breakdowns and costly repairs caused by a simple oversight.</string>
+
+    <string name="onboard_p5_title">Never miss another deadline</string>
+    <string name="onboard_p5_desc">Store your insurance, inspection and registration with a photo. We\'ll remind you before they expire.</string>
+
+    <string name="onboard_p6_title">Decide with data, plan what\'s next</string>
+    <string name="onboard_p6_desc">See your spending by month and category, and set goals for what\'s coming: tires, paint, your next service.</string>
+
+    <string name="onboard_p7_title">Yours, simple and private</string>
+    <string name="onboard_p7_desc">Everything stays on your phone. Add your first car, it takes less than a minute.</string>
+    <string name="onboard_check_1">No account or sign-up</string>
+    <string name="onboard_check_2">Works without internet</string>
+    <string name="onboard_check_3">Back up and restore whenever you want</string>
+    <string name="onboard_check_4">Your currency and units: km or miles</string>
+
+    <string name="onboard_mock_cost_per_km">Cost per kilometer</string>
+    <string name="onboard_mock_fuel">Fuel</string>
+    <string name="onboard_mock_oil">Oil and filter</string>
+    <string name="onboard_mock_insurance">Insurance</string>
+    <string name="onboard_mock_efficiency">Real mileage</string>
+    <string name="onboard_mock_full_tank">Full tank logged</string>
+    <string name="onboard_mock_oil_change">Oil change</string>
+    <string name="onboard_mock_brakes">Brakes</string>
+    <string name="onboard_mock_km_left">%1$s km left</string>
+    <string name="onboard_mock_notif_title">AutoControl · Reminder</string>
+    <string name="onboard_mock_notif_text">Your insurance expires in 7 days</string>
+    <string name="onboard_mock_doc_inspection">Inspection</string>
+    <string name="onboard_mock_doc_registration">Vehicle registration</string>
+    <string name="onboard_mock_in_days">In %1$d days</string>
+    <string name="onboard_mock_goal">Paint the car</string>
+    <string name="onboard_mock_goal_progress">Saved $4,800 of $12,000</string>
+
     <plurals name="expenses_count">
         <item quantity="one">%d expense</item>
         <item quantity="other">%d expenses</item>
