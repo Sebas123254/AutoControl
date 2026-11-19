@@ -211,7 +211,6 @@ fun MainScreen(
                 val eId = back.arguments!!.getString("expenseId")!!
                 ExpenseDetailScreen(
                     expenseId = eId,
-                    vehicleId = vehicleId,
                     onBack = { navController.popBackStack() },
                     onEditClick = { navController.navigate("expense_edit/$vehicleId?expenseId=$eId&goalId=") },
                     onOpenSettings = onOpenSettings

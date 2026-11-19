@@ -27,7 +27,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -40,6 +39,7 @@ import com.sierracode.autocontrol.core.format.localizedDocumentType
 import com.sierracode.autocontrol.core.ui.components.FullScreenImageDialog
 import com.sierracode.autocontrol.core.ui.components.StatusChip
 import com.sierracode.autocontrol.core.ui.components.StatusVariant
+import com.sierracode.autocontrol.core.util.FileUtils
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
 import com.sierracode.autocontrol.data.repository.DocumentRepository
 import com.sierracode.autocontrol.domain.calc.DocumentStatus
@@ -103,10 +103,13 @@ fun DocumentDetailScreen(
     ) { uri: Uri? ->
         if (uri != null && doc?.fileUri != null) {
             try {
-                val sourceFile = File(Uri.parse(doc!!.fileUri).path!!)
-                context.contentResolver.openOutputStream(uri)?.use { output ->
-                    sourceFile.inputStream().use { input ->
-                        input.copyTo(output)
+                // Usamos FileUtils para obtener el archivo físico
+                val sourceFile = FileUtils.getFile(context, doc!!.fileUri)
+                if (sourceFile != null && sourceFile.exists()) {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        sourceFile.inputStream().use { input ->
+                            input.copyTo(output)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -302,21 +305,28 @@ fun DocumentDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(8.dp))
-                        AsyncImage(
-                            model = d.fileUri,
-                            contentDescription = stringResource(R.string.doc_detail_attachment),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(250.dp)
-                                .clickable { showFullScreenImage = true },
-                            contentScale = ContentScale.Fit
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.doc_detail_tap_image),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                        // Usamos FileUtils para obtener la URI correcta de la subcarpeta
+                        val imageUri = FileUtils.getContentUri(context, d.fileUri)
+                        if (imageUri != null) {
+                            AsyncImage(
+                                model = imageUri,
+                                contentDescription = stringResource(R.string.doc_detail_attachment),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(250.dp)
+                                    .clickable { showFullScreenImage = true },
+                                contentScale = ContentScale.Fit
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.doc_detail_tap_image),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text("Imagen no disponible", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             } else if (isPdf) {
@@ -356,7 +366,8 @@ fun DocumentDetailScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    val contentUri = fileUriToContentUri(context, d.fileUri)
+                                    // Usamos FileUtils para obtener la URI segura del PDF
+                                    val contentUri = FileUtils.getContentUri(context, d.fileUri)
                                     if (contentUri != null) {
                                         val intent = Intent(Intent.ACTION_VIEW).apply {
                                             setDataAndType(contentUri, "application/pdf")
@@ -404,10 +415,13 @@ fun DocumentDetailScreen(
     }
 
     if (showFullScreenImage && d.fileUri != null) {
-        FullScreenImageDialog(
-            imageUri = Uri.parse(d.fileUri),
-            onDismiss = { showFullScreenImage = false }
-        )
+        val fullUri = FileUtils.getContentUri(context, d.fileUri)
+        if (fullUri != null) {
+            FullScreenImageDialog(
+                imageUri = fullUri,
+                onDismiss = { showFullScreenImage = false }
+            )
+        }
     }
 }
 
@@ -435,20 +449,10 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-private fun shareAttachment(context: android.content.Context, fileUri: String?) {
-    if (fileUri.isNullOrBlank()) return
+private fun shareAttachment(context: android.content.Context, relativeFileName: String?) {
+    val contentUri = FileUtils.getContentUri(context, relativeFileName) ?: return
     try {
-        val parsed = Uri.parse(fileUri)
-        val contentUri = when (parsed.scheme) {
-            "file" -> {
-                val file = File(parsed.path ?: return)
-                if (!file.exists()) return
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            }
-            "content" -> parsed
-            else -> return
-        }
-        val mimeType = if (fileUri.endsWith(".pdf", ignoreCase = true)) "application/pdf" else "image/*"
+        val mimeType = if (relativeFileName?.endsWith(".pdf", ignoreCase = true) == true) "application/pdf" else "image/*"
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = mimeType
             putExtra(Intent.EXTRA_STREAM, contentUri)
@@ -459,29 +463,5 @@ private fun shareAttachment(context: android.content.Context, fileUri: String?) 
         )
     } catch (e: Exception) {
         e.printStackTrace()
-    }
-}
-
-private fun fileUriToContentUri(context: android.content.Context, fileUri: String?): Uri? {
-    if (fileUri.isNullOrBlank()) return null
-    return try {
-        val parsed = Uri.parse(fileUri)
-        when (parsed.scheme) {
-            "file" -> {
-                val file = File(parsed.path ?: return null)
-                if (file.exists()) {
-                    FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.fileprovider",
-                        file
-                    )
-                } else null
-            }
-            "content" -> parsed
-            else -> null
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
     }
 }

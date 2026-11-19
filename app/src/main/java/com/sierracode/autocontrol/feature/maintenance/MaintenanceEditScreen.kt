@@ -1,6 +1,7 @@
 package com.sierracode.autocontrol.feature.maintenance
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -47,6 +48,7 @@ import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
+import com.sierracode.autocontrol.core.util.FileUtils
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.*
 import com.sierracode.autocontrol.data.preferences.SettingsStore
@@ -55,6 +57,7 @@ import com.sierracode.autocontrol.data.repository.*
 import com.sierracode.autocontrol.domain.calc.UnitConverter
 import com.sierracode.autocontrol.domain.reminder.ReminderPlanner
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -75,9 +78,10 @@ class MaintenanceEditViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val scheduleRepo: ScheduleRepository,
     private val settingsStore: SettingsStore,
-    private val reminderPlanner: ReminderPlanner, // NUEVO: inyectado para gestionar recordatorios
+    private val reminderPlanner: ReminderPlanner,
     categoryRepo: CategoryRepository,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
 
@@ -133,7 +137,7 @@ class MaintenanceEditViewModel @Inject constructor(
     fun updateImage(uri: Uri?) { savedStateHandle["imageUriString"] = uri?.toString(); markDirty() }
     private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
 
-    fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
+    fun save(unitSystem: UnitSystem, onDone: () -> Unit) {
         val amt = amount.value.toDoubleOrNull() ?: 0.0
         val odoInput = odometer.value.toDoubleOrNull()
         val nextOdoInput = nextOdometer.value.toDoubleOrNull()
@@ -173,13 +177,13 @@ class MaintenanceEditViewModel @Inject constructor(
                 var attachment: AttachmentEntity? = null
                 val currentUri = selectedImageUri.value
                 if (currentUri != null) {
-                    val compressedUri = ImageUtils.compressAndSave(context, currentUri)
-                    if (compressedUri != null) {
-                        val fileSize = compressedUri.path?.let { java.io.File(it).length() } ?: 0L
+                    val compressedFileName = ImageUtils.compressAndSave(context, currentUri)
+                    if (compressedFileName != null) {
+                        val fileSize = FileUtils.getFile(context, compressedFileName)?.length() ?: 0L
                         attachment = AttachmentEntity(
                             ownerType = "expense",
                             ownerId = expenseId,
-                            uri = compressedUri.toString(),
+                            uri = compressedFileName,
                             mimeType = "image/jpeg",
                             bytes = fileSize
                         )
@@ -208,7 +212,7 @@ class MaintenanceEditViewModel @Inject constructor(
                             intervalKm = nextOdoKm - odoKm,
                             lastOdometer = odoKm,
                             lastDateEpochDay = dateEpochDay.value,
-                            intervalMonths = null // Aseguramos que sea null para mantenimientos por km
+                            intervalMonths = null
                         )
                         scheduleRepo.upsert(newSchedule)
                         updatedScheduleId = newSchedule.id
@@ -226,7 +230,6 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 expenseRepo.saveWithDetails(expense, null, detail, attachment)
 
-                // Delegar la creación del recordatorio al ReminderPlanner
                 if (finalSchedule != null) {
                     reminderPlanner.planMaintenance(finalSchedule, currentCategory.name)
                 }
@@ -235,8 +238,10 @@ class MaintenanceEditViewModel @Inject constructor(
 
                 savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
+                error = com.sierracode.autocontrol.core.ui.UiError.from(e).asString(context)
             } finally {
                 isLoading = false
             }
@@ -281,7 +286,7 @@ fun MaintenanceEditScreen(
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { vm.save(context, config.unitSystem, onDone) }
+    ) { vm.save(config.unitSystem) { onDone() } }
 
     BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
@@ -302,7 +307,6 @@ fun MaintenanceEditScreen(
     }
 
     if (showDatePicker) {
-        // Fix: UTC end-to-end para evitar desfase de un día
         val initialMillis = LocalDate.ofEpochDay(dateEpochDay)
             .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
@@ -485,7 +489,7 @@ fun MaintenanceEditScreen(
                     if (willCreateReminder && needsPermission) {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     } else {
-                        vm.save(context, config.unitSystem, onDone)
+                        vm.save(config.unitSystem) { onDone() }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),

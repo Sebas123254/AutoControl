@@ -27,11 +27,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -39,6 +41,7 @@ import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
+import com.sierracode.autocontrol.core.ui.components.showUndoSnackbar
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.repository.AttachmentRepository
 import com.sierracode.autocontrol.data.repository.CategoryRepository
@@ -59,7 +62,8 @@ import javax.inject.Inject
 class ExpensesViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val attachmentRepo: AttachmentRepository,
-    categoryRepo: CategoryRepository
+    categoryRepo: CategoryRepository,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
 
@@ -94,12 +98,18 @@ class ExpensesViewModel @Inject constructor(
         ExpenseFilterState(q, p, m, c)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ExpenseFilterState())
 
+    // Conjunto de IDs pendientes de borrado (borrado diferido)
+    private val pendingDeleteIdsFlow = MutableStateFlow<Set<String>>(emptySet())
+    val pendingDeleteIds: StateFlow<Set<String>> = pendingDeleteIdsFlow.asStateFlow()
+
     val filteredExpenses = combine(
         vehicleIdFlow.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else expenseRepo.observeByVehicle(id) },
         allCategories,
-        filterState
-    ) { expenses, cats, state ->
-        filterExpenses(expenses, cats, state)
+        filterState,
+        pendingDeleteIdsFlow
+    ) { expenses, cats, state, pendingIds ->
+        val visible = if (pendingIds.isEmpty()) expenses else expenses.filter { it.id !in pendingIds }
+        filterExpenses(visible, cats, state)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalCents = filteredExpenses.map { calculateTotalCents(it) }
@@ -107,24 +117,36 @@ class ExpensesViewModel @Inject constructor(
 
     var selectedExpense by mutableStateOf<ExpenseEntity?>(null)
 
-    var isSelectionMode by mutableStateOf(false)
-        private set
-    var selectedIds by mutableStateOf<Set<String>>(emptySet())
-        private set
+    // Estado observable de selección respaldado por savedStateHandle como List<String>
+    val selectedIds: StateFlow<Set<String>> = savedStateHandle
+        .getStateFlow("selectedIds", emptyList<String>())
+        .map { it.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    // isSelectionMode derivado directamente de si selectedIds no está vacío
+    val isSelectionMode: StateFlow<Boolean> = selectedIds
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     var isDeleting by mutableStateOf(false)
         private set
 
     init {
         viewModelScope.launch {
-            filteredExpenses.collect { visible ->
-                if (isSelectionMode) {
-                    val visibleIds = visible.map { it.id }.toSet()
-                    val newSelection = selectedIds.intersect(visibleIds)
-                    selectedIds = newSelection
-                    if (newSelection.isEmpty()) isSelectionMode = false
+            combine(filteredExpenses, vehicleIdFlow) { visible, vId -> Pair(visible, vId) }
+                .collect { (visible, vId) ->
+                    // Solo depurar selección si hay un vehículo cargado y la lista proviene de la BD
+                    if (vId != null) {
+                        val visibleIds = visible.map { it.id }.toSet()
+                        val currentSelected = selectedIds.value
+                        if (currentSelected.isNotEmpty()) {
+                            val newSelection = currentSelected.intersect(visibleIds)
+                            if (newSelection.size != currentSelected.size) {
+                                savedStateHandle["selectedIds"] = newSelection.toList()
+                            }
+                        }
+                    }
                 }
-            }
         }
     }
 
@@ -133,36 +155,70 @@ class ExpensesViewModel @Inject constructor(
     fun dismissDialog() { selectedExpense = null }
 
     fun toggleSelection(id: String) {
-        selectedIds = if (selectedIds.contains(id)) {
-            val newSet = selectedIds - id
-            if (newSet.isEmpty()) isSelectionMode = false
-            newSet
-        } else selectedIds + id
+        val current = selectedIds.value
+        val newSet = if (current.contains(id)) current - id else current + id
+        savedStateHandle["selectedIds"] = newSet.toList()
     }
 
     fun enterSelectionMode(id: String) {
-        if (!isSelectionMode) { isSelectionMode = true; selectedIds = setOf(id) }
+        savedStateHandle["selectedIds"] = listOf(id)
     }
 
     fun selectAll() {
-        selectedIds = filteredExpenses.value.map { it.id }.toSet()
+        val allIds = filteredExpenses.value.map { it.id }
+        savedStateHandle["selectedIds"] = allIds
     }
 
-    fun clearSelection() { isSelectionMode = false; selectedIds = emptySet() }
+    fun clearSelection() {
+        savedStateHandle["selectedIds"] = emptyList<String>()
+    }
 
-    fun deleteSelected(onSuccess: (Int) -> Unit) {
-        if (selectedIds.isEmpty()) return
-        val count = selectedIds.size
+    /**
+     * Oculta de inmediato los IDs seleccionados para el borrado diferido.
+     * Retorna la lista de IDs a borrar para que la UI maneje el Snackbar con Undo.
+     */
+    fun startDeferredDelete(): List<String> {
+        val idsToDelete = selectedIds.value.toList()
+        if (idsToDelete.isEmpty()) return emptyList()
+
+        pendingDeleteIdsFlow.value = pendingDeleteIdsFlow.value + idsToDelete
+        clearSelection()
+        return idsToDelete
+    }
+
+    /**
+     * El usuario pulsó Deshacer: los IDs reaparecen inmediatamente sin tocar Room.
+     */
+    fun undoDeferredDelete(ids: List<String>) {
+        pendingDeleteIdsFlow.value = pendingDeleteIdsFlow.value - ids.toSet()
+    }
+
+    /**
+     * El Snackbar expiró o fue descartado: confirmamos el borrado en Room.
+     */
+    fun commitDeferredDelete(ids: List<String>) {
         viewModelScope.launch {
-            isDeleting = true
             try {
-                expenseRepo.deleteMultiple(selectedIds.toList())
-                clearSelection()
-                onSuccess(count)
-            } catch (e: Exception) {
-                // Error
+                expenseRepo.deleteMultiple(ids)
             } finally {
-                isDeleting = false
+                pendingDeleteIdsFlow.value = pendingDeleteIdsFlow.value - ids.toSet()
+            }
+        }
+    }
+
+    /**
+     * Si el ViewModel se destruye con borrados pendientes, se confirman en Room.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        val pending = pendingDeleteIdsFlow.value.toList()
+        if (pending.isNotEmpty()) {
+            kotlinx.coroutines.runBlocking {
+                try {
+                    expenseRepo.deleteMultiple(pending)
+                } catch (e: Exception) {
+                    // Ignorar al salir
+                }
             }
         }
     }
@@ -190,6 +246,8 @@ fun ExpensesScreen(
     val totalCents by vm.totalCents.collectAsStateWithLifecycle()
     val categories by vm.allCategories.collectAsStateWithLifecycle()
     val filterState by vm.filterState.collectAsStateWithLifecycle()
+    val isSelectionMode by vm.isSelectionMode.collectAsStateWithLifecycle()
+    val selectedIds by vm.selectedIds.collectAsStateWithLifecycle()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCategorySheet by remember { mutableStateOf(false) }
@@ -203,8 +261,9 @@ fun ExpensesScreen(
 
     val selectedDesc = stringResource(R.string.expenses_tooltip_single)
     val notSelectedDesc = stringResource(R.string.expenses_tooltip_none)
+    val undoLabel = stringResource(R.string.action_undo)
 
-    BackHandler(enabled = vm.isSelectionMode) { vm.clearSelection() }
+    BackHandler(enabled = isSelectionMode) { vm.clearSelection() }
     BackHandler(enabled = vm.isSearchActive) { vm.updateSearchActive(false) }
 
     if (showDeleteDialog) {
@@ -213,15 +272,32 @@ fun ExpensesScreen(
             title = { Text(stringResource(R.string.expenses_delete_title)) },
             text = { Text(stringResource(R.string.expenses_delete_desc)) },
             confirmButton = {
-                TextButton(onClick = {
-                    showDeleteDialog = false
-                    vm.deleteSelected { count ->
-                        val msg = context.resources.getQuantityString(
-                            R.plurals.expenses_deleted_count, count, count
-                        )
-                        scope.launch { snackbarHostState.showSnackbar(msg) }
-                    }
-                }, enabled = !vm.isDeleting) {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        val idsToDelete = vm.startDeferredDelete()
+                        if (idsToDelete.isNotEmpty()) {
+                            val count = idsToDelete.size
+                            val message = context.resources.getQuantityString(
+                                R.plurals.expenses_deleted_count, count, count
+                            )
+                            scope.launch {
+                                val undone = snackbarHostState.showUndoSnackbar(
+                                    message = message,
+                                    actionLabel = undoLabel,
+                                    duration = SnackbarDuration.Long,
+                                    onUndo = {
+                                        vm.undoDeferredDelete(idsToDelete)
+                                    }
+                                )
+                                if (!undone) {
+                                    vm.commitDeferredDelete(idsToDelete)
+                                }
+                            }
+                        }
+                    },
+                    enabled = !vm.isDeleting
+                ) {
                     if (vm.isDeleting) CircularProgressIndicator(modifier = Modifier.size(16.dp))
                     else Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
                 }
@@ -280,16 +356,16 @@ fun ExpensesScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (!vm.isSelectionMode && !vm.isSearchActive) {
+            if (!isSelectionMode && !vm.isSearchActive) {
                 FloatingActionButton(onClick = onAddClick) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.expenses_add))
                 }
             }
         },
         topBar = {
-            if (vm.isSelectionMode) {
+            if (isSelectionMode) {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.expenses_selected_count, vm.selectedIds.size)) },
+                    title = { Text(stringResource(R.string.expenses_selected_count, selectedIds.size)) },
                     navigationIcon = {
                         IconButton(onClick = { vm.clearSelection() }) { Icon(Icons.Default.Close, stringResource(R.string.expenses_cancel_selection)) }
                     },
@@ -419,13 +495,13 @@ fun ExpensesScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(expenses, key = { it.id }) { expense ->
-                        val isSelected = vm.selectedIds.contains(expense.id)
+                        val isSelected = selectedIds.contains(expense.id)
                         ExpenseRow(
                             expense = expense,
-                            isSelectionMode = vm.isSelectionMode,
+                            isSelectionMode = isSelectionMode,
                             isSelected = isSelected,
                             onClick = {
-                                if (vm.isSelectionMode) {
+                                if (isSelectionMode) {
                                     vm.toggleSelection(expense.id)
                                 } else {
                                     onDetailClick(expense.id)
@@ -453,14 +529,33 @@ fun ExpenseRow(
     selectedDesc: String,
     notSelectedDesc: String
 ) {
-    val semanticsModifier = if (isSelectionMode) Modifier.semantics { contentDescription = if (isSelected) selectedDesc else notSelectedDesc } else Modifier
-    val displayTitle = if (expense.customCategoryName != null) "Otro · ${expense.customCategoryName}" else expense.description ?: stringResource(R.string.expenses_default_name)
+    val semanticsModifier = if (isSelectionMode) {
+        Modifier.semantics {
+            this.selected = isSelected
+            contentDescription = if (isSelected) selectedDesc else notSelectedDesc
+        }
+    } else Modifier
+
+    val displayTitle = if (expense.customCategoryName != null) {
+        "Otro · ${expense.customCategoryName}"
+    } else {
+        expense.description ?: stringResource(R.string.expenses_default_name)
+    }
 
     Card(
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).then(semanticsModifier),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(semanticsModifier),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+        )
     ) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (isSelectionMode) {
                 Checkbox(
                     checked = isSelected,
@@ -472,7 +567,12 @@ fun ExpenseRow(
                 Text(text = displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(text = formatDate(expense.dateEpochDay), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(text = formatMoneyCents(expense.amountCents), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = formatMoneyCents(expense.amountCents),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

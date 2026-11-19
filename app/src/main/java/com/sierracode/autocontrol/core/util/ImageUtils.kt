@@ -3,8 +3,10 @@ package com.sierracode.autocontrol.core.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
 import androidx.core.content.FileProvider
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -13,10 +15,10 @@ import java.util.UUID
 
 object ImageUtils {
     /**
-     * Comprime una imagen desde un Uri, la guarda en el almacenamiento interno
-     * y devuelve el nuevo Uri local.
+     * Comprime una imagen, corrige su orientación EXIF, la guarda en filesDir/attachments/
+     * y devuelve SOLO EL NOMBRE DEL ARCHIVO (ej. img_123.jpg).
      */
-    suspend fun compressAndSave(context: Context, sourceUri: Uri): Uri? = withContext(Dispatchers.IO) {
+    suspend fun compressAndSave(context: Context, sourceUri: Uri): String? = withContext(Dispatchers.IO) {
         try {
             val maxWidth = 1280
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -32,26 +34,48 @@ object ImageUtils {
             }
 
             val decodeOptions = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
-            val originalBitmap = context.contentResolver.openInputStream(sourceUri)?.use {
+            var bitmap = context.contentResolver.openInputStream(sourceUri)?.use {
                 BitmapFactory.decodeStream(it, null, decodeOptions)
             } ?: return@withContext null
 
-            val ratio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
-            val newWidth = if (originalBitmap.width > maxWidth) maxWidth else originalBitmap.width
+            // Corregir orientación EXIF
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                val exif = ExifInterface(input)
+                val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                val matrix = Matrix()
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                }
+                if (orientation != ExifInterface.ORIENTATION_NORMAL) {
+                    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                    if (rotated != bitmap) {
+                        bitmap.recycle()
+                        bitmap = rotated
+                    }
+                }
+            }
+
+            val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val newWidth = if (bitmap.width > maxWidth) maxWidth else bitmap.width
             val newHeight = (newWidth / ratio).toInt()
 
-            val scaledBitmap = if (originalBitmap.width > maxWidth) {
-                Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true)
+            val finalBitmap = if (bitmap.width > maxWidth) {
+                Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also { bitmap.recycle() }
             } else {
-                originalBitmap
+                bitmap
             }
 
-            val file = File(context.filesDir, "img_${UUID.randomUUID()}.jpg")
-            FileOutputStream(file).use { outputStream ->
-                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-            }
+            val fileName = "img_${UUID.randomUUID()}.jpg"
+            val destFile = File(FileUtils.getAttachmentsDir(context), fileName)
 
-            Uri.fromFile(file)
+            FileOutputStream(destFile).use { outputStream ->
+                finalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+            }
+            finalBitmap.recycle()
+
+            fileName
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -59,17 +83,18 @@ object ImageUtils {
     }
 
     /**
-     * Copia un archivo (ej. PDF) desde un Uri de contenido al almacenamiento interno.
+     * Copia un archivo (ej. PDF) a filesDir/attachments/ y devuelve SOLO EL NOMBRE.
      */
-    suspend fun copyToInternalStorage(context: Context, sourceUri: Uri, extension: String): Uri? = withContext(Dispatchers.IO) {
+    suspend fun copyToInternalStorage(context: Context, sourceUri: Uri, extension: String): String? = withContext(Dispatchers.IO) {
         try {
-            val file = File(context.filesDir, "doc_${UUID.randomUUID()}.$extension")
+            val fileName = "doc_${UUID.randomUUID()}.$extension"
+            val destFile = File(FileUtils.getAttachmentsDir(context), fileName)
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                FileOutputStream(file).use { output ->
+                FileOutputStream(destFile).use { output ->
                     input.copyTo(output)
                 }
             }
-            Uri.fromFile(file)
+            fileName
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -77,14 +102,13 @@ object ImageUtils {
     }
 
     /**
-     * Borra un archivo físico del almacenamiento interno a partir de su URI.
+     * Borra un archivo físico a partir de su nombre relativo.
      */
-    fun deleteLocalFile(uriString: String?) {
-        if (uriString.isNullOrBlank()) return
+    fun deleteLocalFile(context: Context, relativeFileName: String?) {
+        if (relativeFileName.isNullOrBlank()) return
         try {
-            val path = Uri.parse(uriString).path ?: return
-            val file = File(path)
-            if (file.exists()) {
+            val file = FileUtils.getFile(context, relativeFileName)
+            if (file != null && file.exists()) {
                 file.delete()
             }
         } catch (e: Exception) {
@@ -93,11 +117,12 @@ object ImageUtils {
     }
 
     /**
-     * Crea un archivo temporal y devuelve un URI seguro para usar con la cámara.
+     * Crea un archivo temporal para la cámara en la subcarpeta correcta.
      */
     fun createTempImageUri(context: Context): Uri? {
         return try {
-            val file = File(context.filesDir, "camera_${UUID.randomUUID()}.jpg")
+            val fileName = "camera_${UUID.randomUUID()}.jpg"
+            val file = File(FileUtils.getAttachmentsDir(context), fileName)
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         } catch (e: Exception) {
             e.printStackTrace()

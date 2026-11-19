@@ -125,9 +125,12 @@ class SettingsViewModel @Inject constructor(
                 }
                 settings.setActiveVehicle(null)
                 onSuccess()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                e.printStackTrace()
-                onError(e.message ?: "Error desconocido")
+                android.util.Log.e("SettingsViewModel", "Error al borrar todos los datos", e)
+                val uiError = com.sierracode.autocontrol.core.ui.UiError.from(e)
+                onError(uiError.asString(context))
             } finally {
                 _isDeleting.value = false
             }

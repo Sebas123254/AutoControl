@@ -86,8 +86,6 @@ class ExpenseRepositoryImpl @Inject constructor(
     override suspend fun deleteMultiple(ids: List<String>) {
         if (ids.isEmpty()) return
 
-        val attachments = db.attachmentDao().getForOwners("expense", ids)
-
         db.withTransaction {
             val affectedGoals = db.goalDao().getAllOnce().filter { it.linkedExpenseId in ids }
             affectedGoals.forEach { goal ->
@@ -100,22 +98,13 @@ class ExpenseRepositoryImpl @Inject constructor(
                 )
             }
 
-            expenses.deleteByIds(ids)
+            // Room onDelete = CASCADE elimina automáticamente fuel_details y maintenance_details.
+            // Los attachments de gastos se eliminan de la base de datos Room,
+            // pero NO se borran los archivos físicos (los limpia OrphanFileSweeper respetando la ventana de 24h).
+            val attachments = db.attachmentDao().getForOwners("expense", ids)
             attachments.forEach { db.attachmentDao().deleteById(it.id) }
-        }
 
-        withContext(Dispatchers.IO) {
-            attachments.forEach { attachment ->
-                try {
-                    val path = Uri.parse(attachment.uri).path
-                    if (path != null) {
-                        val file = File(path)
-                        if (file.exists()) file.delete()
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
+            expenses.deleteByIds(ids)
         }
     }
 

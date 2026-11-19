@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,19 +20,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.data.backup.BackupManager
-import com.sierracode.autocontrol.data.backup.ImportSummary
+import com.sierracode.autocontrol.data.backup.BackupStats
 import com.sierracode.autocontrol.data.local.entity.VehicleEntity
 import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -41,13 +44,17 @@ import javax.inject.Inject
 class VehiclesViewModel @Inject constructor(
     private val repo: VehicleRepository,
     private val settings: SettingsStore,
-    private val backupManager: BackupManager
+    private val backupManager: BackupManager,
+    private val orphanFileSweeper: com.sierracode.autocontrol.core.util.OrphanFileSweeper
 ) : ViewModel() {
     val vehicles = repo.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val isPro = settings.isPro
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val _isProcessing = MutableStateFlow(false)
+    val isProcessing = _isProcessing.asStateFlow()
 
     fun setActiveVehicle(id: String) = viewModelScope.launch { settings.setActiveVehicle(id) }
     fun setPro(value: Boolean) = viewModelScope.launch { settings.setPro(value) }
@@ -60,30 +67,28 @@ class VehiclesViewModel @Inject constructor(
         }
     }
 
-    fun exportData(uri: Uri, context: android.content.Context, onResult: (Boolean) -> Unit) {
+    fun exportData(uri: Uri, onResult: (Result<BackupStats>) -> Unit) {
         viewModelScope.launch {
-            try {
-                context.contentResolver.openOutputStream(uri)?.use { backupManager.exportToJson(it) }
-                onResult(true)
-            } catch (e: Exception) {
-                onResult(false)
-            }
+            _isProcessing.value = true
+            val result = backupManager.exportToZip(uri)
+            _isProcessing.value = false
+            onResult(result)
         }
     }
 
-    fun importData(
-        uri: Uri,
-        context: android.content.Context,
-        onResult: (Result<ImportSummary>) -> Unit
-    ) {
+    fun importData(uri: Uri, onResult: (Result<BackupStats>) -> Unit) {
         viewModelScope.launch {
-            try {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    onResult(backupManager.importFromJson(input))
-                } ?: onResult(Result.failure(Exception("No se pudo abrir el archivo")))
-            } catch (e: Exception) {
-                onResult(Result.failure(e))
+            _isProcessing.value = true
+            val result = backupManager.importFromZip(uri)
+            if (result.isSuccess) {
+                try {
+                    orphanFileSweeper.sweep()
+                } catch (e: Exception) {
+                    android.util.Log.e("VehiclesViewModel", "Error barriendo huérfanos tras restaurar", e)
+                }
             }
+            _isProcessing.value = false
+            onResult(result)
         }
     }
 }
@@ -99,6 +104,7 @@ fun VehiclesScreen(
 ) {
     val vehicles by vm.vehicles.collectAsStateWithLifecycle()
     val isPro by vm.isPro.collectAsStateWithLifecycle()
+    val isProcessing by vm.isProcessing.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var showImportDialog by remember { mutableStateOf(false) }
@@ -111,53 +117,44 @@ fun VehiclesScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val backupSuccessText = stringResource(R.string.vehicles_backup_success)
-    val backupErrorText = stringResource(R.string.vehicles_backup_error)
     val proActivatedText = stringResource(R.string.vehicles_pro_activated)
 
+    // Lanzador para Exportar (Crear archivo ZIP)
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        vm.exportData(uri, context) { success ->
+        vm.exportData(uri) { result ->
             scope.launch {
-                snackbarHostState.showSnackbar(if (success) backupSuccessText else backupErrorText)
+                val msg = result.fold(
+                    onSuccess = { stats ->
+                        context.getString(R.string.vehicles_backup_success_full, stats.records, stats.images)
+                    },
+                    onFailure = { error ->
+                        val uiError = com.sierracode.autocontrol.core.ui.UiError.from(error)
+                        context.getString(R.string.vehicles_backup_error, uiError.asString(context))
+                    }
+                )
+                snackbarHostState.showSnackbar(msg)
             }
         }
     }
 
+    // Lanzador para Importar (Abrir archivo ZIP)
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        vm.importData(uri, context) { result ->
+        vm.importData(uri) { result ->
             scope.launch {
                 val msg = result.fold(
-                    onSuccess = { summary ->
-                        when {
-                            !summary.hadImagesInZip && summary.totalRecords == 0 ->
-                                context.getString(R.string.vehicles_restore_error)
-                            !summary.hadImagesInZip ->
-                                context.getString(
-                                    R.string.vehicles_restore_success_no_images,
-                                    summary.totalRecords
-                                )
-                            summary.imagesMissing > 0 || summary.imagesFailed > 0 ->
-                                context.getString(
-                                    R.string.vehicles_restore_success_with_failures,
-                                    summary.totalRecords,
-                                    summary.imagesExtracted,
-                                    summary.imagesMissing + summary.imagesFailed
-                                )
-                            else ->
-                                context.getString(
-                                    R.string.vehicles_restore_success_full,
-                                    summary.totalRecords,
-                                    summary.imagesExtracted
-                                )
-                        }
+                    onSuccess = { stats ->
+                        context.getString(R.string.vehicles_restore_success_full, stats.records, stats.images)
                     },
-                    onFailure = { context.getString(R.string.vehicles_restore_error) }
+                    onFailure = { error ->
+                        val uiError = com.sierracode.autocontrol.core.ui.UiError.from(error)
+                        context.getString(R.string.vehicles_restore_error, uiError.asString(context))
+                    }
                 )
                 snackbarHostState.showSnackbar(msg)
             }
@@ -256,13 +253,22 @@ fun VehiclesScreen(
                 TopAppBar(
                     title = { Text(stringResource(R.string.vehicles_title), fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton(onClick = { showImportDialog = true }) {
+                        IconButton(
+                            onClick = { showImportDialog = true },
+                            enabled = !isProcessing
+                        ) {
                             Icon(Icons.Default.FolderOpen, stringResource(R.string.vehicles_cd_import))
                         }
-                        IconButton(onClick = { createDocumentLauncher.launch("AutoControl_Backup.zip") }) {
+                        IconButton(
+                            onClick = { createDocumentLauncher.launch("AutoControl_Backup.zip") },
+                            enabled = !isProcessing
+                        ) {
                             Icon(Icons.Default.Save, stringResource(R.string.vehicles_cd_export))
                         }
-                        IconButton(onClick = onOpenSettings) {
+                        IconButton(
+                            onClick = onOpenSettings,
+                            enabled = !isProcessing
+                        ) {
                             Icon(Icons.Default.Settings, stringResource(R.string.vehicles_cd_settings))
                         }
                     }
@@ -277,51 +283,74 @@ fun VehiclesScreen(
             }
         }
     ) { padding ->
-        if (vehicles.isEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(Icons.Default.DirectionsCar, contentDescription = null, modifier = Modifier.size(64.dp))
-                Spacer(Modifier.height(16.dp))
-                Text(stringResource(R.string.vehicles_empty_title), style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.vehicles_empty_subtitle), textAlign = TextAlign.Center)
-                Spacer(Modifier.height(24.dp))
-                Button(onClick = onAddClick) { Text(stringResource(R.string.vehicles_add_first)) }
+        Box(Modifier.fillMaxSize()) {
+            if (vehicles.isEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.DirectionsCar, contentDescription = null, modifier = Modifier.size(64.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text(stringResource(R.string.vehicles_empty_title), style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.vehicles_empty_subtitle), textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(24.dp))
+                    Button(onClick = onAddClick) { Text(stringResource(R.string.vehicles_add_first)) }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(vehicles, key = { it.id }) { vehicle ->
+                        val isSelected = selectedVehicles.contains(vehicle.id)
+                        VehicleCard(
+                            vehicle = vehicle,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = isSelected,
+                            onClick = {
+                                if (isSelectionMode) {
+                                    val newSelection = if (isSelected) selectedVehicles - vehicle.id
+                                    else selectedVehicles + vehicle.id
+                                    selectedVehicles = newSelection
+                                    if (newSelection.isEmpty()) isSelectionMode = false
+                                } else {
+                                    vm.setActiveVehicle(vehicle.id)
+                                    onVehicleClick(vehicle.id)
+                                }
+                            },
+                            onLongClick = {
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                    selectedVehicles = setOf(vehicle.id)
+                                }
+                            },
+                            onEditClick = { onEditClick(vehicle.id) }
+                        )
+                    }
+                }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(vehicles, key = { it.id }) { vehicle ->
-                    val isSelected = selectedVehicles.contains(vehicle.id)
-                    VehicleCard(
-                        vehicle = vehicle,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = isSelected,
-                        onClick = {
-                            if (isSelectionMode) {
-                                val newSelection = if (isSelected) selectedVehicles - vehicle.id
-                                else selectedVehicles + vehicle.id
-                                selectedVehicles = newSelection
-                                if (newSelection.isEmpty()) isSelectionMode = false
-                            } else {
-                                vm.setActiveVehicle(vehicle.id)
-                                onVehicleClick(vehicle.id)
-                            }
-                        },
-                        onLongClick = {
-                            if (!isSelectionMode) {
-                                isSelectionMode = true
-                                selectedVehicles = setOf(vehicle.id)
-                            }
-                        },
-                        onEditClick = { onEditClick(vehicle.id) }
-                    )
+
+            // Overlay de progreso (Cargando backup)
+            if (isProcessing) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(16.dp))
+                            Text(stringResource(R.string.vehicles_backup_processing), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
                 }
             }
         }

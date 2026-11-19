@@ -85,11 +85,11 @@ class ReminderEvaluatorTest {
 
     @Test
     fun `mantenimiento combinado junta ambos stages`() {
-        val today = LocalDate.of(2026, 1, 1).toEpochDay()
-        val lastDate = today.minusMonths(5).toEpochDay() // Vence en 1 mes (o menos, según días)
+        val todayLocal = LocalDate.of(2026, 1, 1)
+        val today = todayLocal.toEpochDay()
 
         // Simulamos que faltan 7 días para el vencimiento
-        val lastDateAdj = LocalDate.ofEpochDay(today).minusMonths(6).plusDays(7).toEpochDay()
+        val lastDateAdj = todayLocal.minusMonths(6).plusDays(7).toEpochDay()
 
         val result = ReminderEvaluator.evaluateMaintenance(
             todayEpochDay = today,

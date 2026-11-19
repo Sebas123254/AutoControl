@@ -121,14 +121,21 @@
     <string name="vehicles_maint_err_interval">Intervals must be greater than 0.</string>
     <string name="vehicles_maint_err_negative">Reminders cannot be negative.</string>
     <string name="vehicles_backup_success">Backup saved successfully</string>
-    <string name="vehicles_backup_error">Could not save the backup</string>
     <string name="vehicles_restore_success">Backup restored successfully</string>
-    <string name="vehicles_restore_error">Could not restore the backup</string>
     <string name="vehicles_pro_activated">Pro activated. You can add unlimited vehicles.</string>
     <string name="vehicles_pro_activate">Activate Pro</string>
-    <string name="notif_summary_title">%1$d upcoming reminders</string>
-    <string name="notif_summary_body">You have %1$d reminders that need your attention</string>
-    <string name="notif_summary_more">and %1$d more…</string>
+    <string name="vehicles_restore_success_no_images">Restored: %1$d records (the backup did not include images)</string>
+    <string name="vehicles_restore_success_with_failures">Restored: %1$d records, %2$d images. %3$d could not be recovered</string>
+    <string name="vehicles_backup_success_full">Backup created: %1$d records and %2$d images</string>
+    <string name="vehicles_backup_error">Export error: %1$s</string>
+    <string name="vehicles_restore_success_full">Restored: %1$d records, %2$d images</string>
+    <string name="vehicles_restore_error">Restore error: %1$s</string>
+    <string name="vehicles_backup_processing">Processing backup…</string>
+    <string name="backup_error_cannot_read">Could not read the backup file</string>
+    <string name="backup_error_cannot_write">Could not write to the selected destination</string>
+    <string name="backup_error_missing_json">The selected file is not a valid backup (missing backup.json)</string>
+    <string name="backup_error_newer_version">The backup is from a newer version of the app (found version %1$d, supported up to %2$d)</string>
+    <string name="error_generic">An unexpected error occurred. Please try again.</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">Home</string>
@@ -504,6 +511,9 @@
     <string name="notif_doc_expiring_body">Your document is about to expire. Check AutoControl!</string>
     <string name="notif_maint_due_title">Maintenance: %1$s</string>
     <string name="notif_maint_due_body">Your vehicle may need this service soon.</string>
+    <string name="notif_summary_title">%1$d upcoming reminders</string>
+    <string name="notif_summary_body">You have %1$d alerts requiring your attention</string>
+    <string name="notif_summary_more">and %1$d more…</string>
 
     <!-- App Shortcuts -->
     <string name="shortcut_new_expense_short">New expense</string>

@@ -1,5 +1,6 @@
 package com.sierracode.autocontrol.feature.fuel
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -43,6 +44,7 @@ import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
+import com.sierracode.autocontrol.core.util.FileUtils
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
@@ -55,6 +57,7 @@ import com.sierracode.autocontrol.data.repository.ExpenseRepository
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -76,7 +79,8 @@ class FuelEditViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val settingsStore: SettingsStore,
     categoryRepo: CategoryRepository,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
 
@@ -145,7 +149,7 @@ class FuelEditViewModel @Inject constructor(
         }
     }
 
-    fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
+    fun save(unitSystem: UnitSystem, onDone: () -> Unit) {
         val lInput = liters.value.toDoubleOrNull() ?: 0.0
         val tInput = total.value.toDoubleOrNull() ?: 0.0
         val pInput = pricePerLiter.value.toDoubleOrNull() ?: 0.0
@@ -197,13 +201,13 @@ class FuelEditViewModel @Inject constructor(
                 var attachment: AttachmentEntity? = null
                 val currentUri = selectedImageUri.value
                 if (currentUri != null) {
-                    val compressedUri = ImageUtils.compressAndSave(context, currentUri)
-                    if (compressedUri != null) {
-                        val fileSize = compressedUri.path?.let { java.io.File(it).length() } ?: 0L
+                    val compressedFileName = ImageUtils.compressAndSave(context, currentUri)
+                    if (compressedFileName != null) {
+                        val fileSize = FileUtils.getFile(context, compressedFileName)?.length() ?: 0L
                         attachment = AttachmentEntity(
                             ownerType = "expense",
                             ownerId = expenseId,
-                            uri = compressedUri.toString(),
+                            uri = compressedFileName,
                             mimeType = "image/jpeg",
                             bytes = fileSize
                         )
@@ -218,8 +222,10 @@ class FuelEditViewModel @Inject constructor(
 
                 savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
+                error = com.sierracode.autocontrol.core.ui.UiError.from(e).asString(context)
             } finally {
                 isLoading = false
             }
@@ -290,7 +296,6 @@ fun FuelEditScreen(
     }
 
     if (showDatePicker) {
-        // Fix: leer/escribir en UTC, no en systemDefault.
         val initialMillis = LocalDate.ofEpochDay(dateEpochDay)
             .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
@@ -482,7 +487,7 @@ fun FuelEditScreen(
             vm.error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
 
             Button(
-                onClick = { vm.save(context, config.unitSystem, onDone) },
+                onClick = { vm.save(config.unitSystem) { onDone() } },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 enabled = !vm.isLoading
             ) {

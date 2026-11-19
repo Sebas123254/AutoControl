@@ -145,8 +145,10 @@ class VehicleEditViewModel @Inject constructor(
                 settingsStore.setActiveVehicle(vehicle.id)
                 savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                error = context.getString(R.string.vehicles_err_generic, e.message ?: "")
+                error = com.sierracode.autocontrol.core.ui.UiError.from(e).asString(context)
             } finally {
                 isLoading = false
             }

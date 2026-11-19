@@ -121,14 +121,21 @@
     <string name="vehicles_maint_err_interval">Los intervalos deben ser mayores a 0.</string>
     <string name="vehicles_maint_err_negative">Los avisos no pueden ser negativos.</string>
     <string name="vehicles_backup_success">Respaldo guardado correctamente</string>
-    <string name="vehicles_backup_error">No se pudo guardar el respaldo</string>
     <string name="vehicles_restore_success">Respaldo restaurado correctamente</string>
-    <string name="vehicles_restore_error">No se pudo restaurar el respaldo</string>
     <string name="vehicles_pro_activated">Pro activado. Puedes agregar vehículos ilimitados.</string>
     <string name="vehicles_pro_activate">Activar Pro</string>
-    <string name="vehicles_restore_success_full">Restaurado: %1$d registros y %2$d imágenes</string>
     <string name="vehicles_restore_success_no_images">Restaurado: %1$d registros (el respaldo no incluía imágenes)</string>
     <string name="vehicles_restore_success_with_failures">Restaurado: %1$d registros, %2$d imágenes. %3$d no se pudieron recuperar</string>
+    <string name="vehicles_backup_success_full">Respaldo creado: %1$d registros y %2$d imágenes</string>
+    <string name="vehicles_backup_error">Error al exportar: %1$s</string>
+    <string name="vehicles_restore_success_full">Restaurado: %1$d registros, %2$d imágenes</string>
+    <string name="vehicles_restore_error">Error al restaurar: %1$s</string>
+    <string name="vehicles_backup_processing">Procesando respaldo…</string>
+    <string name="backup_error_cannot_read">No se pudo leer el archivo de respaldo</string>
+    <string name="backup_error_cannot_write">No se pudo guardar el archivo en la ubicación seleccionada</string>
+    <string name="backup_error_missing_json">El archivo seleccionado no es un respaldo válido (falta backup.json)</string>
+    <string name="backup_error_newer_version">El respaldo es de una versión más nueva de la app (versión %1$d encontrada, soporte hasta %2$d)</string>
+    <string name="error_generic">Ocurrió un error inesperado. Inténtalo de nuevo.</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">Inicio</string>

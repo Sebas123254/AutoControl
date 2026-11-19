@@ -1,5 +1,6 @@
 package com.sierracode.autocontrol.feature.expenses
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,6 +45,7 @@ import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
+import com.sierracode.autocontrol.core.util.FileUtils
 import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
@@ -53,6 +55,7 @@ import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.*
 import com.sierracode.autocontrol.domain.calc.UnitConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -75,7 +78,8 @@ class ExpenseEditViewModel @Inject constructor(
     private val goalRepo: GoalRepository,
     private val settingsStore: SettingsStore,
     categoryRepo: CategoryRepository,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
     private val expenseId: String? = savedStateHandle.get<String>("expenseId")?.takeIf { it.isNotBlank() }
@@ -139,7 +143,7 @@ class ExpenseEditViewModel @Inject constructor(
 
                     val oldAttachment = attachmentRepo.getForOwner("expense", expenseId)
                     if (oldAttachment != null) {
-                        savedStateHandle["imageUriString"] = oldAttachment.uri
+                        savedStateHandle["imageUriString"] = FileUtils.getContentUri(context, oldAttachment.uri)?.toString()
                     }
                 }
                 savedStateHandle["loadedFromDb"] = true
@@ -190,7 +194,7 @@ class ExpenseEditViewModel @Inject constructor(
     fun clearWarning() { warningMessage = null }
     private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
 
-    fun save(context: android.content.Context, unitSystem: UnitSystem, onDone: () -> Unit) {
+    fun save(unitSystem: UnitSystem, onDone: () -> Unit) {
         val amt = amount.value.toDoubleOrNull() ?: 0.0
         val amountCents = (amt * 100).roundToLong()
         val odoInput = odometer.value.toDoubleOrNull()
@@ -235,20 +239,20 @@ class ExpenseEditViewModel @Inject constructor(
                 val currentUri = selectedImageUri.value
 
                 if (currentUri != null && currentUri.scheme != "file") {
-                    val compressedUri = ImageUtils.compressAndSave(context, currentUri)
-                    if (compressedUri != null) {
+                    val compressedFileName = ImageUtils.compressAndSave(context, currentUri)
+                    if (compressedFileName != null) {
                         if (expenseId != null) {
                             val oldAtt = attachmentRepo.getForOwner("expense", expenseId)
                             if (oldAtt != null) {
-                                ImageUtils.deleteLocalFile(oldAtt.uri)
+                                ImageUtils.deleteLocalFile(context, oldAtt.uri)
                                 attachmentRepo.deleteById(oldAtt.id)
                             }
                         }
-                        val fileSize = compressedUri.path?.let { java.io.File(it).length() } ?: 0L
+                        val fileSize = FileUtils.getFile(context, compressedFileName)?.length() ?: 0L
                         attachment = AttachmentEntity(
                             ownerType = "expense",
                             ownerId = finalExpenseId,
-                            uri = compressedUri.toString(),
+                            uri = compressedFileName,
                             mimeType = "image/jpeg",
                             bytes = fileSize
                         )
@@ -258,7 +262,7 @@ class ExpenseEditViewModel @Inject constructor(
                 } else if (currentUri == null && expenseId != null) {
                     val oldAtt = attachmentRepo.getForOwner("expense", expenseId)
                     if (oldAtt != null) {
-                        ImageUtils.deleteLocalFile(oldAtt.uri)
+                        ImageUtils.deleteLocalFile(context, oldAtt.uri)
                         attachmentRepo.deleteById(oldAtt.id)
                     }
                 }
@@ -274,8 +278,10 @@ class ExpenseEditViewModel @Inject constructor(
 
                 savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
+                error = com.sierracode.autocontrol.core.ui.UiError.from(e).asString(context)
             } finally {
                 isLoading = false
             }
@@ -367,8 +373,6 @@ fun ExpenseEditScreen(
     }
 
     if (showDatePicker) {
-        // DatePicker de M3 usa millis UTC-normalized (medianoche UTC del día elegido).
-        // Leer con ZoneOffset.UTC para no restar un día en zonas con offset negativo (MX).
         val initialMillis = LocalDate.ofEpochDay(dateEpochDay)
             .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
@@ -562,7 +566,7 @@ fun ExpenseEditScreen(
                     if (expenseId == null && !config.isPro && currentMonthExpenses >= 50) {
                         showProLimitDialog = true
                     } else {
-                        vm.save(context, config.unitSystem, onDone)
+                        vm.save(config.unitSystem) { onDone() }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),

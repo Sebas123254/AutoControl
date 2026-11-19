@@ -1,7 +1,6 @@
 package com.sierracode.autocontrol.feature.expenses
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -21,7 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -35,6 +33,7 @@ import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.format.formatVolume
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.components.FullScreenImageDialog
+import com.sierracode.autocontrol.core.util.FileUtils
 import com.sierracode.autocontrol.data.local.entity.AttachmentEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.local.entity.FuelDetailEntity
@@ -54,7 +53,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.io.File
 import javax.inject.Inject
 
 data class ExpenseDetailState(
@@ -77,7 +75,6 @@ class ExpenseDetailViewModel @Inject constructor(
 
     val state: StateFlow<ExpenseDetailState?> = expenseRepo.observeOne(expenseId)
         .flatMapLatest { expense: ExpenseEntity? ->
-            // Tipar explícitamente el Flow para que flowOf(null) no infiera Flow<Nothing?>.
             if (expense == null) {
                 flowOf<ExpenseDetailState?>(null)
             } else {
@@ -112,7 +109,6 @@ class ExpenseDetailViewModel @Inject constructor(
 @Composable
 fun ExpenseDetailScreen(
     expenseId: String,
-    vehicleId: String,
     onBack: () -> Unit,
     onEditClick: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -399,21 +395,31 @@ fun ExpenseDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(8.dp))
-                        AsyncImage(
-                            model = attachment.uri,
-                            contentDescription = stringResource(R.string.expense_edit_receipt_desc),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(250.dp)
-                                .clickable { showFullScreenImage = true },
-                            contentScale = ContentScale.Fit
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.expense_detail_tap_image),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        // Usamos FileUtils para obtener la URI correcta de la subcarpeta
+                        val imageUri = FileUtils.getContentUri(context, attachment.uri)
+                        if (imageUri != null) {
+                            AsyncImage(
+                                model = imageUri,
+                                contentDescription = stringResource(R.string.expense_edit_receipt_desc),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(250.dp)
+                                    .clickable { showFullScreenImage = true },
+                                contentScale = ContentScale.Fit
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.expense_detail_tap_image),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "Imagen no disponible",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }
@@ -423,10 +429,13 @@ fun ExpenseDetailScreen(
     }
 
     if (showFullScreenImage && currentState.attachment != null) {
-        FullScreenImageDialog(
-            imageUri = Uri.parse(currentState.attachment.uri),
-            onDismiss = { showFullScreenImage = false }
-        )
+        val fullUri = FileUtils.getContentUri(context, currentState.attachment.uri)
+        if (fullUri != null) {
+            FullScreenImageDialog(
+                imageUri = fullUri,
+                onDismiss = { showFullScreenImage = false }
+            )
+        }
     }
 }
 
@@ -454,19 +463,9 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-private fun shareAttachment(context: android.content.Context, fileUri: String?, title: String) {
-    if (fileUri.isNullOrBlank()) return
+private fun shareAttachment(context: android.content.Context, relativeFileName: String?, title: String) {
+    val contentUri = FileUtils.getContentUri(context, relativeFileName) ?: return
     try {
-        val parsed = Uri.parse(fileUri)
-        val contentUri = when (parsed.scheme) {
-            "file" -> {
-                val file = File(parsed.path ?: return)
-                if (!file.exists()) return
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            }
-            "content" -> parsed
-            else -> return
-        }
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/*"
             putExtra(Intent.EXTRA_STREAM, contentUri)

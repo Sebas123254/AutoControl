@@ -1,302 +1,540 @@
-@file:OptIn(kotlinx.serialization.InternalSerializationApi::class)
-
 package com.sierracode.autocontrol.data.backup
 
 import android.content.Context
+import android.net.Uri
+import android.util.Log
 import androidx.room.withTransaction
+import com.sierracode.autocontrol.BuildConfig
+import com.sierracode.autocontrol.core.util.FileUtils
 import com.sierracode.autocontrol.data.local.AutoControlDatabase
 import com.sierracode.autocontrol.data.local.entity.*
+import com.sierracode.autocontrol.data.preferences.SettingsStore
+import com.sierracode.autocontrol.domain.reminder.ReminderPlanner
+import com.sierracode.autocontrol.worker.ReminderScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Resumen del resultado de una importación.
- * Se usa para mostrar un mensaje útil al usuario en lugar de un simple "OK / ERROR".
- */
-data class ImportSummary(
-    val vehicles: Int,
-    val expenses: Int,
-    val documents: Int,
-    val attachments: Int,
-    val imagesExtracted: Int,
-    val imagesMissing: Int,
-    val imagesFailed: Int,
-    val hadImagesInZip: Boolean
-) {
-    val totalRecords: Int get() = vehicles + expenses + documents
-}
+data class BackupStats(val records: Int, val images: Int)
+
+private const val TAG = "BackupManager"
+private const val MAX_UNCOMPRESSED_BYTES = 1L * 1024 * 1024 * 1024 // 1 GB limit
 
 @Singleton
 class BackupManager @Inject constructor(
     private val db: AutoControlDatabase,
+    private val settingsStore: SettingsStore,
+    private val reminderPlanner: ReminderPlanner,
     @ApplicationContext private val context: Context
 ) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val json = Json {
+        prettyPrint = true
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     // =========================================================================
-    // EXPORT
+    // EXPORTACIÓN
     // =========================================================================
+    suspend fun exportToZip(uri: Uri): Result<BackupStats> = withContext(Dispatchers.IO) {
+        val tempZip = File(context.cacheDir, "backup_temp_${System.currentTimeMillis()}.zip")
+        try {
+            // 1. Snapshot consistente de todas las tablas dentro de una sola transacción
+            val (backup, actualFiles) = db.withTransaction {
+                val vehicles = db.vehicleDao().getAllOnce()
+                val expenses = db.expenseDao().getAllOnce()
+                val fuelDetails = db.fuelDao().getAllOnce()
+                val maintenanceDetails = db.maintenanceDao().getAllOnce()
+                val documents = db.documentDao().getAllOnce()
+                val attachments = db.attachmentDao().getAllOnce()
+                val maintenanceSchedules = db.scheduleDao().getAllOnce()
+                val reminders = db.reminderDao().getAllOnce()
+                val goals = db.goalDao().getAllOnce()
 
-    suspend fun exportToJson(outputStream: OutputStream) {
-        withContext(Dispatchers.IO) {
-            val backup = BackupData(
-                exportedAt = System.currentTimeMillis(),
-                vehicles = db.vehicleDao().getAllOnce().map { it.toDto() },
-                expenses = db.expenseDao().getAllOnce().map { it.toDto() },
-                fuelDetails = db.fuelDao().getAllOnce().map { it.toDto() },
-                maintenanceDetails = db.maintenanceDao().getAllOnce().map { it.toDto() },
-                documents = db.documentDao().getAllOnce().map { it.toDto() },
-                attachments = db.attachmentDao().getAllOnce().map { it.toDto() },
-                maintenanceSchedules = db.scheduleDao().getAllOnce().map { it.toDto() },
-                reminders = db.reminderDao().getAllOnce().map { it.toDto() },
-                goals = db.goalDao().getAllOnce().map { it.toDto() }
-            )
+                // Recolectar archivos referenciados
+                val referencedNames = mutableSetOf<String>()
+                attachments.forEach { if (it.uri.isNotBlank()) referencedNames.add(it.uri.substringAfterLast("/")) }
+                documents.forEach { doc -> doc.fileUri?.let { if (it.isNotBlank()) referencedNames.add(it.substringAfterLast("/")) } }
+                vehicles.forEach { v -> v.photoUri?.let { if (it.isNotBlank()) referencedNames.add(it.substringAfterLast("/")) } }
+
+                val filesOnDisk = referencedNames.mapNotNull { FileUtils.getFile(context, it) }
+                    .filter { it.exists() && it.isFile }
+                    .distinctBy { it.name }
+
+                val backupData = BackupData(
+                    schemaVersion = BackupData.CURRENT_SCHEMA_VERSION,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    filesCount = filesOnDisk.size,
+                    exportedAt = System.currentTimeMillis(),
+                    vehicles = vehicles.map { it.toDto() },
+                    expenses = expenses.map { it.toDto() },
+                    fuelDetails = fuelDetails.map { it.toDto() },
+                    maintenanceDetails = maintenanceDetails.map { it.toDto() },
+                    documents = documents.map { it.toDto() },
+                    attachments = attachments.map { it.toDto() },
+                    maintenanceSchedules = maintenanceSchedules.map { it.toDto() },
+                    reminders = reminders.map { it.toDto() },
+                    goals = goals.map { it.toDto() }
+                )
+                Pair(backupData, filesOnDisk)
+            }
+
             val jsonString = json.encodeToString(BackupData.serializer(), backup)
 
-            ZipOutputStream(outputStream).use { zipOut ->
-                // 1. backup.json
-                val jsonEntry = ZipEntry("backup.json")
-                zipOut.putNextEntry(jsonEntry)
-                zipOut.write(jsonString.toByteArray())
-                zipOut.closeEntry()
+            // 2. Escribir a un archivo temporal primero
+            FileOutputStream(tempZip).use { fos ->
+                ZipOutputStream(fos).use { zipOut ->
+                    // Entrada backup.json
+                    zipOut.putNextEntry(ZipEntry("backup.json"))
+                    zipOut.write(jsonString.toByteArray(Charsets.UTF_8))
+                    zipOut.closeEntry()
 
-                // 2. Imágenes / PDFs (con streams, sin cargar a memoria)
-                context.filesDir.listFiles()?.forEach { file ->
-                    if (file.isFile && isAppAttachmentFile(file.name)) {
-                        val fileEntry = ZipEntry(file.name)
-                        zipOut.putNextEntry(fileEntry)
+                    // Entradas de archivos deduplicados
+                    actualFiles.forEach { file ->
+                        zipOut.putNextEntry(ZipEntry(file.name))
                         file.inputStream().use { it.copyTo(zipOut) }
                         zipOut.closeEntry()
                     }
                 }
             }
-            outputStream.flush()
-        }
-    }
 
-    // =========================================================================
-    // IMPORT
-    // =========================================================================
+            // 3. Copiar al destino final vía ContentResolver con "wt"
+            val outputStream = context.contentResolver.openOutputStream(uri, "wt")
+                ?: throw BackupError.CannotWrite()
 
-    /**
-     * Restaura un backup.
-     * - Extrae las imágenes ANTES de borrar los archivos existentes (fix del bug
-     *   donde se borraban justo después de extraerlas).
-     * - Valida zip-slip: cualquier entrada con `..`, `/` inicial o `\` se rechaza.
-     * - Transacción atómica: si falla cualquier inserción, no se modifican datos.
-     * - Devuelve un resumen con contadores para reportar al usuario.
-     */
-    suspend fun importFromJson(inputStream: InputStream): Result<ImportSummary> {
-        return withContext(Dispatchers.IO) {
-            try {
-                var jsonString = ""
-                val currentFilesDir = context.filesDir
-                val canonicalFilesDir = currentFilesDir.canonicalPath
-                val extractedFiles = mutableMapOf<String, File>()
-                var failedCount = 0
+            outputStream.use { os ->
+                tempZip.inputStream().use { isStream -> isStream.copyTo(os) }
+            }
 
-                // ============================================================
-                // PASO 1: leer el ZIP. Extraer backup.json + imágenes válidas.
-                // NO se borra nada todavía.
-                // ============================================================
-                ZipInputStream(inputStream).use { zipIn ->
-                    var entry: ZipEntry? = zipIn.nextEntry
-                    while (entry != null) {
-                        val name = entry.name
-
-                        when {
-                            name == "backup.json" -> {
-                                jsonString = zipIn.readBytes().decodeToString()
-                            }
-
-                            isSafeAttachmentEntry(name) -> {
-                                val targetFile = File(currentFilesDir, name)
-                                val canonicalTarget = targetFile.canonicalPath
-
-                                // Validar zip-slip
-                                if (!canonicalTarget.startsWith("$canonicalFilesDir${File.separator}")) {
-                                    failedCount++
-                                    zipIn.closeEntry()
-                                    entry = zipIn.nextEntry
-                                    continue
-                                }
-
-                                try {
-                                    FileOutputStream(targetFile).use { output ->
-                                        zipIn.copyTo(output)
-                                    }
-                                    extractedFiles[name] = targetFile
-                                } catch (e: Exception) {
-                                    failedCount++
-                                }
-                            }
-                        }
-                        zipIn.closeEntry()
-                        entry = zipIn.nextEntry
-                    }
-                }
-
-                if (jsonString.isEmpty()) {
-                    return@withContext Result.failure(
-                        Exception("No se encontró backup.json dentro del ZIP.")
-                    )
-                }
-
-                val backup = json.decodeFromString(BackupData.serializer(), jsonString)
-                if (backup.schemaVersion > BackupData.CURRENT_SCHEMA_VERSION) {
-                    return@withContext Result.failure(
-                        Exception("El respaldo fue creado con una versión más reciente de AutoControl.")
-                    )
-                }
-
-                // Reescribe una URI absoluta antigua (file:///data/user/0/.../img_x.jpg)
-                // a una URI absoluta nueva que apunte al filesDir del dispositivo actual.
-                fun fixUri(uriString: String?): String? {
-                    if (uriString.isNullOrBlank()) return null
-                    val fileName = uriString.substringAfterLast("/")
-                    if (fileName.isBlank()) return null
-                    val targetFile = File(currentFilesDir, fileName)
-                    return "file://${targetFile.absolutePath}"
-                }
-
-                // ============================================================
-                // PASO 2: transacción atómica (BD + limpieza de huérfanos).
-                // Solo borramos archivos que NO acabamos de extraer.
-                // ============================================================
-                db.withTransaction {
-                    currentFilesDir.listFiles()?.forEach { file ->
-                        if (isAppAttachmentFile(file.name) && file.name !in extractedFiles.keys) {
-                            file.delete()
-                        }
-                    }
-
-                    db.goalDao().deleteAll()
-                    db.reminderDao().deleteAll()
-                    db.attachmentDao().deleteAll()
-                    db.scheduleDao().deleteAll()
-                    db.documentDao().deleteAll()
-                    db.maintenanceDao().deleteAll()
-                    db.fuelDao().deleteAll()
-                    db.expenseDao().deleteAll()
-                    db.vehicleDao().deleteAll()
-
-                    backup.vehicles.forEach { db.vehicleDao().upsert(it.toEntity()) }
-                    backup.expenses.forEach { db.expenseDao().upsert(it.toEntity()) }
-                    backup.fuelDetails.forEach { db.fuelDao().upsert(it.toEntity()) }
-                    backup.maintenanceSchedules.forEach { db.scheduleDao().upsert(it.toEntity()) }
-                    backup.maintenanceDetails.forEach { db.maintenanceDao().upsert(it.toEntity()) }
-
-                    backup.documents.forEach { dto ->
-                        db.documentDao().upsert(dto.toEntity().copy(fileUri = fixUri(dto.fileUri)))
-                    }
-                    backup.attachments.forEach { dto ->
-                        db.attachmentDao().upsert(dto.toEntity().copy(uri = fixUri(dto.uri) ?: dto.uri))
-                    }
-
-                    backup.reminders.forEach { db.reminderDao().upsert(it.toEntity()) }
-                    backup.goals.forEach { db.goalDao().upsert(it.toEntity()) }
-                }
-
-                // ============================================================
-                // PASO 3: contar imágenes referenciadas que no estaban en el ZIP.
-                // ============================================================
-                val referencedFiles = (
-                        backup.attachments.mapNotNull { it.uri } +
-                                backup.documents.mapNotNull { it.fileUri }
-                        ).mapNotNull { uri ->
-                        uri.substringAfterLast("/").takeIf { it.isNotBlank() }
-                    }.toSet()
-
-                val missingCount = referencedFiles.count { it !in extractedFiles.keys }
-
-                val summary = ImportSummary(
-                    vehicles = backup.vehicles.size,
-                    expenses = backup.expenses.size,
-                    documents = backup.documents.size,
-                    attachments = backup.attachments.size,
-                    imagesExtracted = extractedFiles.size,
-                    imagesMissing = missingCount,
-                    imagesFailed = failedCount,
-                    hadImagesInZip = extractedFiles.isNotEmpty()
-                )
-                Result.success(summary)
-            } catch (e: Exception) {
-                Result.failure(e)
+            val totalRecords = backup.vehicles.size + backup.expenses.size + backup.documents.size
+            Result.success(BackupStats(totalRecords, actualFiles.size))
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (be: BackupError) {
+            Log.e(TAG, "Error durante la exportación de respaldo: ${be.message}", be)
+            Result.failure(be)
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción inesperada al exportar respaldo", e)
+            Result.failure(e)
+        } finally {
+            if (tempZip.exists()) {
+                tempZip.delete()
             }
         }
     }
 
     // =========================================================================
-    // Helpers
+    // RESTAURACIÓN
     // =========================================================================
+    suspend fun importFromZip(uri: Uri): Result<BackupStats> = withContext(Dispatchers.IO) {
+        val tempDir = File(context.cacheDir, "restore_temp_${System.currentTimeMillis()}")
+        if (tempDir.exists()) tempDir.deleteRecursively()
+        tempDir.mkdirs()
 
-    private fun isAppAttachmentFile(name: String): Boolean =
-        name.startsWith("img_") || name.startsWith("doc_")
+        try {
+            // 1. Extraer a directorio temporal con validación Zip-Slip y límite de 1 GB
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: throw BackupError.CannotRead()
 
-    /**
-     * Valida una entrada del ZIP antes de extraerla.
-     * Solo se aceptan archivos con prefijo `img_` o `doc_` en la raíz del zip,
-     * sin `..`, sin `/` inicial y sin `\`.
-     */
-    private fun isSafeAttachmentEntry(name: String): Boolean {
-        if (name.isBlank()) return false
-        if (name.contains("..")) return false
-        if (name.startsWith("/")) return false
-        if (name.contains("\\")) return false
-        if (name.contains("/")) return false  // solo raíz del zip
-        return isAppAttachmentFile(name)
+            inputStream.use { isStream ->
+                extractZipSafely(isStream, tempDir)
+            }
+
+            // 2. Leer directamente backup.json desde el temporal
+            val backupJsonFile = File(tempDir, "backup.json")
+            if (!backupJsonFile.exists() || !backupJsonFile.isFile) {
+                throw BackupError.MissingJson()
+            }
+            val jsonString = backupJsonFile.readText(Charsets.UTF_8)
+            if (jsonString.isBlank()) {
+                throw BackupError.MissingJson()
+            }
+
+            val backup = try {
+                json.decodeFromString(BackupData.serializer(), jsonString)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error al deserializar backup.json", e)
+                throw e
+            }
+
+            // 3. Validar versión del esquema
+            if (backup.schemaVersion > BackupData.CURRENT_SCHEMA_VERSION) {
+                throw BackupError.NewerVersion(
+                    found = backup.schemaVersion,
+                    supported = BackupData.CURRENT_SCHEMA_VERSION
+                )
+            }
+
+            // 4. Copiar archivos del temporal al destino final (filesDir/attachments/)
+            val attachmentsDir = FileUtils.getAttachmentsDir(context)
+            val extractedFiles = tempDir.listFiles()?.filter { it.isFile && it.name != "backup.json" } ?: emptyList()
+
+            extractedFiles.forEach { file ->
+                val dest = File(attachmentsDir, file.name)
+                file.copyTo(dest, overwrite = true)
+            }
+
+            // 5. Transacción de Room: limpiar e insertar todo atómicamente
+            db.withTransaction {
+                db.goalDao().deleteAll()
+                db.reminderDao().deleteAll()
+                db.attachmentDao().deleteAll()
+                db.scheduleDao().deleteAll()
+                db.documentDao().deleteAll()
+                db.maintenanceDao().deleteAll()
+                db.fuelDao().deleteAll()
+                db.expenseDao().deleteAll()
+                db.vehicleDao().deleteAll()
+
+                backup.vehicles.forEach { db.vehicleDao().upsert(it.toEntity()) }
+                backup.expenses.forEach { db.expenseDao().upsert(it.toEntity()) }
+                backup.fuelDetails.forEach { db.fuelDao().upsert(it.toEntity()) }
+                backup.maintenanceSchedules.forEach { db.scheduleDao().upsert(it.toEntity()) }
+                backup.maintenanceDetails.forEach { db.maintenanceDao().upsert(it.toEntity()) }
+                backup.documents.forEach { db.documentDao().upsert(it.toEntity()) }
+                backup.attachments.forEach { db.attachmentDao().upsert(it.toEntity()) }
+                backup.reminders.forEach { db.reminderDao().upsert(it.toEntity()) }
+                backup.goals.forEach { db.goalDao().upsert(it.toEntity()) }
+            }
+
+            // 6. Validar vehículo activo en SettingsStore
+            val activeId = settingsStore.activeVehicleId.first()
+            if (activeId != null && db.vehicleDao().get(activeId) == null) {
+                settingsStore.setActiveVehicle(null)
+            }
+
+            // 7. Reprogramar recordatorios en WorkManager / ReminderPlanner
+            try {
+                // Re-planificar todos los documentos y mantenimientos para sincronizar triggers
+                val docs = db.documentDao().getAllOnce()
+                docs.forEach { reminderPlanner.planDocument(it) }
+
+                val schedules = db.scheduleDao().getAllOnce().filter { it.active }
+                schedules.forEach { reminderPlanner.planMaintenance(it, it.name) }
+
+                // Asegurar que el worker periódico diario de WorkManager esté activo
+                ReminderScheduler.schedule(context)
+            } catch (e: Exception) {
+                Log.w(TAG, "No se pudieron sincronizar todos los recordatorios tras restaurar", e)
+            }
+
+            val totalRecords = backup.vehicles.size + backup.expenses.size + backup.documents.size
+            Result.success(BackupStats(totalRecords, extractedFiles.size))
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (be: BackupError) {
+            Log.e(TAG, "Error durante la restauración de respaldo: ${be.message}", be)
+            Result.failure(be)
+        } catch (e: Exception) {
+            Log.e(TAG, "Excepción inesperada al restaurar respaldo", e)
+            Result.failure(e)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    private fun extractZipSafely(
+        inputStream: InputStream,
+        targetDir: File
+    ) {
+        val canonicalTarget = targetDir.canonicalPath
+        var totalBytesRead = 0L
+
+        ZipInputStream(inputStream).use { zis ->
+            var entry = zis.nextEntry
+            val buffer = ByteArray(8192)
+
+            while (entry != null) {
+                val name = entry.name
+                val targetFile = File(targetDir, name)
+                val canonicalFile = targetFile.canonicalPath
+
+                // Protección Zip-Slip: debe ser igual a canonicalTarget o comenzar con target + separator
+                if (canonicalFile != canonicalTarget && !canonicalFile.startsWith(canonicalTarget + File.separator)) {
+                    throw SecurityException("Intento de Zip-Slip detectado en: $name")
+                }
+
+                if (entry.isDirectory) {
+                    targetFile.mkdirs()
+                } else {
+                    targetFile.parentFile?.mkdirs()
+                    FileOutputStream(targetFile).use { fos ->
+                        var len: Int
+                        while (zis.read(buffer).also { len = it } > 0) {
+                            totalBytesRead += len
+                            if (totalBytesRead > MAX_UNCOMPRESSED_BYTES) {
+                                throw SecurityException("El archivo descomprimido excede el límite de 1 GB")
+                            }
+                            fos.write(buffer, 0, len)
+                        }
+                    }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
     }
 }
 
-// --- Entity → DTO ---
-private fun VehicleEntity.toDto() = VehicleDto(
-    id, brand, model, year, trim, color, plates, vin, fuelType, tankLiters, odometer,
-    photoUri, purchaseDateEpochDay, purchasePriceCents, notes, currencyCode, unitSystem, createdAt, updatedAt
-)
-private fun ExpenseEntity.toDto() = ExpenseDto(
-    id, vehicleId, type, categoryId, amountCents, dateEpochDay, odometer,
-    description, customCategoryName, establishment, paymentMethod, notes, createdAt, updatedAt
-)
-private fun FuelDetailEntity.toDto() = FuelDetailDto(expenseId, litersMilli, pricePerLiterCents, fuelType, station, fullTank)
-private fun MaintenanceDetailEntity.toDto() = MaintenanceDetailDto(expenseId, scheduleId, serviceName, workshop, nextOdometer, nextDateEpochDay)
-private fun DocumentEntity.toDto() = DocumentDto(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
-private fun AttachmentEntity.toDto() = AttachmentDto(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
-private fun MaintenanceScheduleEntity.toDto() = MaintenanceScheduleDto(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
-private fun ReminderEntity.toDto() = ReminderDto(
-    id, vehicleId, sourceType, sourceId, title, body,
-    triggerAtEpochMillis, enabled, lastNotifiedAt,
-    templateKey, templateArgs, lastNotifiedStage
-)
-private fun GoalEntity.toDto() = GoalDto(id, vehicleId, title, notes, estimatedCents, estimatedMaxCents, priority, targetDateEpochDay, status, categoryId, createdAt, completedAt, linkedExpenseId)
+// =========================================================================
+// MAPPERS CON ARGUMENTOS CON NOMBRE
+// =========================================================================
 
-// --- DTO → Entity ---
+private fun VehicleEntity.toDto() = VehicleDto(
+    id = id,
+    brand = brand,
+    model = model,
+    year = year,
+    trim = trim,
+    color = color,
+    plates = plates,
+    vin = vin,
+    fuelType = fuelType,
+    tankLiters = tankLiters,
+    odometer = odometer,
+    photoUri = photoUri,
+    purchaseDateEpochDay = purchaseDateEpochDay,
+    purchasePriceCents = purchasePriceCents,
+    notes = notes,
+    currencyCode = currencyCode,
+    unitSystem = unitSystem,
+    createdAt = createdAt,
+    updatedAt = updatedAt
+)
+
+private fun ExpenseEntity.toDto() = ExpenseDto(
+    id = id,
+    vehicleId = vehicleId,
+    type = type,
+    categoryId = categoryId,
+    amountCents = amountCents,
+    dateEpochDay = dateEpochDay,
+    odometer = odometer,
+    description = description,
+    customCategoryName = customCategoryName,
+    establishment = establishment,
+    paymentMethod = paymentMethod,
+    notes = notes,
+    createdAt = createdAt,
+    updatedAt = updatedAt
+)
+
+private fun FuelDetailEntity.toDto() = FuelDetailDto(
+    expenseId = expenseId,
+    litersMilli = litersMilli,
+    pricePerLiterCents = pricePerLiterCents,
+    fuelType = fuelType,
+    station = station,
+    fullTank = fullTank
+)
+
+private fun MaintenanceDetailEntity.toDto() = MaintenanceDetailDto(
+    expenseId = expenseId,
+    scheduleId = scheduleId,
+    serviceName = serviceName,
+    workshop = workshop,
+    nextOdometer = nextOdometer,
+    nextDateEpochDay = nextDateEpochDay
+)
+
+private fun DocumentEntity.toDto() = DocumentDto(
+    id = id,
+    vehicleId = vehicleId,
+    type = type,
+    name = name,
+    issueDateEpochDay = issueDateEpochDay,
+    expiryDateEpochDay = expiryDateEpochDay,
+    reminderLeadDays = reminderLeadDays,
+    fileUri = fileUri,
+    notes = notes,
+    createdAt = createdAt
+)
+
+private fun AttachmentEntity.toDto() = AttachmentDto(
+    id = id,
+    ownerType = ownerType,
+    ownerId = ownerId,
+    uri = uri,
+    mimeType = mimeType,
+    bytes = bytes,
+    createdAt = createdAt
+)
+
+private fun MaintenanceScheduleEntity.toDto() = MaintenanceScheduleDto(
+    id = id,
+    vehicleId = vehicleId,
+    name = name,
+    intervalKm = intervalKm,
+    intervalMonths = intervalMonths,
+    lastOdometer = lastOdometer,
+    lastDateEpochDay = lastDateEpochDay,
+    remindBeforeKm = remindBeforeKm,
+    remindBeforeDays = remindBeforeDays,
+    active = active
+)
+
+private fun ReminderEntity.toDto() = ReminderDto(
+    id = id,
+    vehicleId = vehicleId,
+    sourceType = sourceType,
+    sourceId = sourceId,
+    title = title,
+    body = body,
+    triggerAtEpochMillis = triggerAtEpochMillis,
+    enabled = enabled,
+    lastNotifiedAt = lastNotifiedAt,
+    templateKey = templateKey,
+    templateArgs = templateArgs,
+    lastNotifiedStage = lastNotifiedStage
+)
+
+private fun GoalEntity.toDto() = GoalDto(
+    id = id,
+    vehicleId = vehicleId,
+    title = title,
+    notes = notes,
+    estimatedCents = estimatedCents,
+    estimatedMaxCents = estimatedMaxCents,
+    priority = priority,
+    targetDateEpochDay = targetDateEpochDay,
+    status = status,
+    categoryId = categoryId,
+    createdAt = createdAt,
+    completedAt = completedAt,
+    linkedExpenseId = linkedExpenseId
+)
+
 private fun VehicleDto.toEntity() = VehicleEntity(
-    id, brand, model, year, trim, color, plates, vin, fuelType, tankLiters, odometer,
-    photoUri, purchaseDateEpochDay, purchasePriceCents, notes, currencyCode, unitSystem, createdAt, updatedAt
+    id = id,
+    brand = brand,
+    model = model,
+    year = year,
+    trim = trim,
+    color = color,
+    plates = plates,
+    vin = vin,
+    fuelType = fuelType,
+    tankLiters = tankLiters,
+    odometer = odometer,
+    photoUri = photoUri,
+    purchaseDateEpochDay = purchaseDateEpochDay,
+    purchasePriceCents = purchasePriceCents,
+    notes = notes,
+    currencyCode = currencyCode,
+    unitSystem = unitSystem,
+    createdAt = createdAt,
+    updatedAt = updatedAt
 )
+
 private fun ExpenseDto.toEntity() = ExpenseEntity(
-    id, vehicleId, type, categoryId, amountCents, dateEpochDay, odometer,
-    description, customCategoryName, establishment, paymentMethod, notes, createdAt, updatedAt
+    id = id,
+    vehicleId = vehicleId,
+    type = type,
+    categoryId = categoryId,
+    amountCents = amountCents,
+    dateEpochDay = dateEpochDay,
+    odometer = odometer,
+    description = description,
+    customCategoryName = customCategoryName,
+    establishment = establishment,
+    paymentMethod = paymentMethod,
+    notes = notes,
+    createdAt = createdAt,
+    updatedAt = updatedAt
 )
-private fun FuelDetailDto.toEntity() = FuelDetailEntity(expenseId, litersMilli, pricePerLiterCents, fuelType, station, fullTank)
-private fun MaintenanceDetailDto.toEntity() = MaintenanceDetailEntity(expenseId, scheduleId, serviceName, workshop, nextOdometer, nextDateEpochDay)
-private fun DocumentDto.toEntity() = DocumentEntity(id, vehicleId, type, name, issueDateEpochDay, expiryDateEpochDay, reminderLeadDays, fileUri, notes, createdAt)
-private fun AttachmentDto.toEntity() = AttachmentEntity(id, ownerType, ownerId, uri, mimeType, bytes, createdAt)
-private fun MaintenanceScheduleDto.toEntity() = MaintenanceScheduleEntity(id, vehicleId, name, intervalKm, intervalMonths, lastOdometer, lastDateEpochDay, remindBeforeKm, remindBeforeDays, active)
+
+private fun FuelDetailDto.toEntity() = FuelDetailEntity(
+    expenseId = expenseId,
+    litersMilli = litersMilli,
+    pricePerLiterCents = pricePerLiterCents,
+    fuelType = fuelType,
+    station = station,
+    fullTank = fullTank
+)
+
+private fun MaintenanceDetailDto.toEntity() = MaintenanceDetailEntity(
+    expenseId = expenseId,
+    scheduleId = scheduleId,
+    serviceName = serviceName,
+    workshop = workshop,
+    nextOdometer = nextOdometer,
+    nextDateEpochDay = nextDateEpochDay
+)
+
+private fun DocumentDto.toEntity() = DocumentEntity(
+    id = id,
+    vehicleId = vehicleId,
+    type = type,
+    name = name,
+    issueDateEpochDay = issueDateEpochDay,
+    expiryDateEpochDay = expiryDateEpochDay,
+    reminderLeadDays = reminderLeadDays,
+    fileUri = fileUri,
+    notes = notes,
+    createdAt = createdAt
+)
+
+private fun AttachmentDto.toEntity() = AttachmentEntity(
+    id = id,
+    ownerType = ownerType,
+    ownerId = ownerId,
+    uri = uri,
+    mimeType = mimeType,
+    bytes = bytes,
+    createdAt = createdAt
+)
+
+private fun MaintenanceScheduleDto.toEntity() = MaintenanceScheduleEntity(
+    id = id,
+    vehicleId = vehicleId,
+    name = name,
+    intervalKm = intervalKm,
+    intervalMonths = intervalMonths,
+    lastOdometer = lastOdometer,
+    lastDateEpochDay = lastDateEpochDay,
+    remindBeforeKm = remindBeforeKm,
+    remindBeforeDays = remindBeforeDays,
+    active = active
+)
+
 private fun ReminderDto.toEntity() = ReminderEntity(
-    id, vehicleId, sourceType, sourceId, title, body,
-    triggerAtEpochMillis, enabled, lastNotifiedAt,
-    templateKey, templateArgs, lastNotifiedStage
+    id = id,
+    vehicleId = vehicleId,
+    sourceType = sourceType,
+    sourceId = sourceId,
+    title = title,
+    body = body,
+    triggerAtEpochMillis = triggerAtEpochMillis,
+    enabled = enabled,
+    lastNotifiedAt = lastNotifiedAt,
+    templateKey = templateKey,
+    templateArgs = templateArgs,
+    lastNotifiedStage = lastNotifiedStage
 )
-private fun GoalDto.toEntity() = GoalEntity(id, vehicleId, title, notes, estimatedCents, estimatedMaxCents, priority, targetDateEpochDay, status, categoryId, createdAt, completedAt, linkedExpenseId)
+
+private fun GoalDto.toEntity() = GoalEntity(
+    id = id,
+    vehicleId = vehicleId,
+    title = title,
+    notes = notes,
+    estimatedCents = estimatedCents,
+    estimatedMaxCents = estimatedMaxCents,
+    priority = priority,
+    targetDateEpochDay = targetDateEpochDay,
+    status = status,
+    categoryId = categoryId,
+    createdAt = createdAt,
+    completedAt = completedAt,
+    linkedExpenseId = linkedExpenseId
+)

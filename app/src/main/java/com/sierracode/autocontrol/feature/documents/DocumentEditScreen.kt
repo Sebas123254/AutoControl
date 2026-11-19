@@ -1,6 +1,7 @@
 package com.sierracode.autocontrol.feature.documents
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -39,6 +40,7 @@ import com.sierracode.autocontrol.core.util.ImageUtils
 import com.sierracode.autocontrol.data.local.entity.DocumentEntity
 import com.sierracode.autocontrol.data.repository.DocumentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -53,7 +55,8 @@ import javax.inject.Inject
 @HiltViewModel
 class DocumentEditViewModel @Inject constructor(
     private val repo: DocumentRepository,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val vehicleId: String = savedStateHandle["vehicleId"] ?: ""
     private val documentId: String? = savedStateHandle.get<String>("documentId")?.takeIf { it.isNotBlank() }
@@ -112,7 +115,7 @@ class DocumentEditViewModel @Inject constructor(
     fun updateFileUri(uri: Uri?) { savedStateHandle["selectedFileUriString"] = uri?.toString(); markDirty() }
     private fun markDirty() { savedStateHandle["hasUnsavedChanges"] = true }
 
-    fun save(context: android.content.Context, onDone: () -> Unit) {
+    fun save(onDone: () -> Unit) {
         val currentName = name.value
         val currentType = type.value
         val currentExpiry = expiryDate.value
@@ -144,11 +147,11 @@ class DocumentEditViewModel @Inject constructor(
 
                 if (currentSelectedFileUri != null) {
                     val mimeType = context.contentResolver.getType(currentSelectedFileUri)
-                    ImageUtils.deleteLocalFile(currentExistingFileUri)
+                    ImageUtils.deleteLocalFile(context, currentExistingFileUri)
                     if (mimeType == "application/pdf") {
-                        finalFileUri = ImageUtils.copyToInternalStorage(context, currentSelectedFileUri, "pdf")?.toString()
+                        finalFileUri = ImageUtils.copyToInternalStorage(context, currentSelectedFileUri, "pdf")
                     } else {
-                        finalFileUri = ImageUtils.compressAndSave(context, currentSelectedFileUri)?.toString()
+                        finalFileUri = ImageUtils.compressAndSave(context, currentSelectedFileUri)
                     }
                 }
 
@@ -167,8 +170,10 @@ class DocumentEditViewModel @Inject constructor(
 
                 savedStateHandle["hasUnsavedChanges"] = false
                 onDone()
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                error = context.getString(R.string.expense_edit_err_generic, e.message ?: "")
+                error = com.sierracode.autocontrol.core.ui.UiError.from(e).asString(context)
             } finally {
                 isLoading = false
             }
@@ -202,7 +207,7 @@ fun DocumentEditScreen(
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { vm.save(context, onDone) }
+    ) { vm.save { onDone() } }
 
     BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
@@ -302,7 +307,6 @@ fun DocumentEditScreen(
             }
 
             if (showIssuePicker) {
-                // Fix: UTC end-to-end.
                 val initialMillis = (issueDate ?: LocalDate.now())
                     .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
@@ -310,8 +314,8 @@ fun DocumentEditScreen(
                     onDismissRequest = { showIssuePicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { millis ->
-                                vm.updateIssueDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                            state.selectedDateMillis?.let {
+                                vm.updateIssueDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
                             }
                             showIssuePicker = false
                         }) { Text(stringResource(R.string.action_ok)) }
@@ -344,7 +348,6 @@ fun DocumentEditScreen(
             }
 
             if (showExpiryPicker) {
-                // Fix: UTC end-to-end.
                 val initialMillis = (expiryDate ?: LocalDate.now())
                     .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
                 val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
@@ -352,8 +355,8 @@ fun DocumentEditScreen(
                     onDismissRequest = { showExpiryPicker = false },
                     confirmButton = {
                         TextButton(onClick = {
-                            state.selectedDateMillis?.let { millis ->
-                                vm.updateExpiryDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                            state.selectedDateMillis?.let {
+                                vm.updateExpiryDate(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
                             }
                             showExpiryPicker = false
                         }) { Text(stringResource(R.string.action_ok)) }
@@ -410,7 +413,7 @@ fun DocumentEditScreen(
                             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
                             expiryDate != null
                     if (needsPermission) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    else vm.save(context, onDone)
+                    else vm.save { onDone() }
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 enabled = !vm.isLoading
