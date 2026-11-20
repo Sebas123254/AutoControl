@@ -290,9 +290,26 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                     value = targetDate?.let { formatDate(it.toEpochDay()) } ?: "",
                     onValueChange = {},
                     readOnly = true,
+                    enabled = false,
                     label = { Text(stringResource(R.string.goals_field_date)) },
-                    trailingIcon = { Icon(Icons.Default.DateRange, null) },
-                    modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }
+                    trailingIcon = {
+                        Icon(
+                            Icons.Default.DateRange,
+                            contentDescription = stringResource(R.string.action_choose_date)
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable { showDatePicker = true }
                 )
             }
 
@@ -312,7 +329,15 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                         }) { Text(stringResource(R.string.action_ok)) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) }
+                        Row {
+                            if (targetDate != null) {
+                                TextButton(onClick = {
+                                    vm.updateTargetDate(null)
+                                    showDatePicker = false
+                                }) { Text(stringResource(R.string.action_clear)) }
+                            }
+                            TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) }
+                        }
                     }
                 ) { DatePicker(state = state) }
             }

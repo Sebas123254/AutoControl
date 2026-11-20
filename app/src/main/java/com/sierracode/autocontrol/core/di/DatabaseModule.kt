@@ -10,6 +10,7 @@ import com.sierracode.autocontrol.data.local.MIGRATION_4_5
 import com.sierracode.autocontrol.data.local.MIGRATION_5_6
 import com.sierracode.autocontrol.data.local.MIGRATION_6_7
 import com.sierracode.autocontrol.data.local.MIGRATION_7_8
+import com.sierracode.autocontrol.data.local.MIGRATION_8_9
 import com.sierracode.autocontrol.data.local.seed.CategorySeed
 import dagger.Module
 import dagger.Provides
@@ -38,13 +39,14 @@ object DatabaseModule {
                 MIGRATION_4_5,
                 MIGRATION_5_6,
                 MIGRATION_6_7,
-                MIGRATION_7_8
+                MIGRATION_7_8,
+                MIGRATION_8_9
             )
             .build()
 
         scope.launch(Dispatchers.IO) {
             val dao = db.categoryDao()
-            if (dao.count() == 0) dao.upsertAll(CategorySeed.all())
+            dao.upsertAll(CategorySeed.all())
         }
 
         return db

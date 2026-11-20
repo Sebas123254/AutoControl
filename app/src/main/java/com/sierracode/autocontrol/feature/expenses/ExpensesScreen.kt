@@ -71,6 +71,7 @@ class ExpensesViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val queryFlow = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = queryFlow.asStateFlow()
     private val periodFlow = MutableStateFlow(ExpensePeriod.ALL)
     private val customMonthFlow = MutableStateFlow<YearMonth?>(null)
     private val categoryIdsFlow = MutableStateFlow<Set<String>>(emptySet())
@@ -246,6 +247,7 @@ fun ExpensesScreen(
     val totalCents by vm.totalCents.collectAsStateWithLifecycle()
     val categories by vm.allCategories.collectAsStateWithLifecycle()
     val filterState by vm.filterState.collectAsStateWithLifecycle()
+    val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
     val isSelectionMode by vm.isSelectionMode.collectAsStateWithLifecycle()
     val selectedIds by vm.selectedIds.collectAsStateWithLifecycle()
 
@@ -379,9 +381,10 @@ fun ExpensesScreen(
                 TopAppBar(
                     title = {
                         TextField(
-                            value = filterState.query,
+                            value = searchQuery,
                             onValueChange = { vm.setQuery(it) },
                             placeholder = { Text(stringResource(R.string.expenses_search_hint)) },
+                            singleLine = true,
                             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -392,12 +395,15 @@ fun ExpensesScreen(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                             trailingIcon = {
-                                if (filterState.query.isNotEmpty()) {
+                                if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { vm.setQuery("") }) { Icon(Icons.Default.Clear, stringResource(R.string.action_clear)) }
                                 }
                             }
                         )
-                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                        LaunchedEffect(Unit) {
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
+                        }
                     },
                     navigationIcon = {
                         IconButton(onClick = { vm.updateSearchActive(false) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) }

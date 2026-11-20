@@ -6,7 +6,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GoalDao {
-    @Query("SELECT * FROM goals WHERE vehicleId = :vehicleId ORDER BY status ASC, priority ASC, targetDateEpochDay ASC")
+    @Query(
+        """
+        SELECT * FROM goals WHERE vehicleId = :vehicleId
+        ORDER BY status ASC,
+            CASE priority WHEN 'ALTA' THEN 0 WHEN 'MEDIA' THEN 1 WHEN 'BAJA' THEN 2 ELSE 3 END ASC,
+            targetDateEpochDay ASC
+        """
+    )
     fun observeByVehicle(vehicleId: String): Flow<List<GoalEntity>>
 
     @Query("SELECT * FROM goals WHERE id = :id")

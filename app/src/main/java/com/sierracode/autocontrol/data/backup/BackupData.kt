@@ -27,7 +27,7 @@ data class BackupData(
     val goals: List<GoalDto> = emptyList()
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 8
+        const val CURRENT_SCHEMA_VERSION = 9
     }
 }
 

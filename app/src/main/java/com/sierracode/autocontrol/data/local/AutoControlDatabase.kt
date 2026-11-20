@@ -14,7 +14,7 @@ import com.sierracode.autocontrol.data.local.entity.*
         MaintenanceScheduleEntity::class, DocumentEntity::class,
         AttachmentEntity::class, ReminderEntity::class, GoalEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class AutoControlDatabase : RoomDatabase() {
@@ -126,6 +126,19 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
                     FROM reminders r2
                     WHERE r2.sourceType = r.sourceType AND r2.sourceId = r.sourceId
                 )
+            )
+        """.trimIndent())
+    }
+}
+
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE expenses ADD COLUMN currencyCode TEXT NOT NULL DEFAULT 'MXN'")
+        database.execSQL("""
+            UPDATE expenses
+            SET currencyCode = COALESCE(
+                (SELECT currencyCode FROM vehicles WHERE vehicles.id = expenses.vehicleId),
+                'MXN'
             )
         """.trimIndent())
     }

@@ -31,6 +31,10 @@ interface ExpenseDao {
     @Query("SELECT SUM(amountCents) FROM expenses WHERE vehicleId = :vehicleId AND dateEpochDay BETWEEN :from AND :to")
     fun observeSum(vehicleId: String, from: Long, to: Long): Flow<Long?>
 
+    /** Odómetro más bajo registrado en los gastos del vehículo (null si ninguno lo tiene). */
+    @Query("SELECT MIN(odometer) FROM expenses WHERE vehicleId = :vehicleId AND odometer IS NOT NULL")
+    fun observeMinOdometer(vehicleId: String): Flow<Long?>
+
     @Query("""
         SELECT categoryId AS categoryId, SUM(amountCents) AS totalCents, COUNT(*) AS count
         FROM expenses WHERE vehicleId = :vehicleId AND dateEpochDay BETWEEN :from AND :to

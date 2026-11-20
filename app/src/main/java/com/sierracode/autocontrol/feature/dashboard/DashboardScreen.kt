@@ -112,11 +112,10 @@ class DashboardViewModel @Inject constructor(
         if (id == null) flowOf(null) else combine(
             vehicleRepo.observe(id),
             expenseRepo.observeSum(id, 0L, Long.MAX_VALUE),
-            expenseRepo.observeByVehicle(id)
-        ) { vehicle, total, expenses ->
+            expenseRepo.observeMinOdometer(id)
+        ) { vehicle, total, minOdometer ->
             if (vehicle == null || total == null || total == 0L) return@combine null
-            val minOdometer = expenses.mapNotNull { it.odometer }.minOrNull()
-                ?: return@combine null
+            if (minOdometer == null) return@combine null
             val kmRecorridos = vehicle.odometer - minOdometer
             if (kmRecorridos > 0) total.toDouble() / kmRecorridos else null
         }

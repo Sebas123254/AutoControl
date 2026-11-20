@@ -26,6 +26,8 @@ data class ExpenseDeletionSnapshot(
 interface ExpenseRepository {
     fun observeByVehicle(id: String): Flow<List<ExpenseEntity>>
     fun observeSum(id: String, from: Long, to: Long): Flow<Long?>
+
+    fun observeMinOdometer(id: String): Flow<Long?>
     fun observeByCategory(id: String, from: Long, to: Long): Flow<List<com.sierracode.autocontrol.data.local.dao.CategoryTotalRow>>
     fun observeOne(id: String): Flow<ExpenseEntity?>
     suspend fun get(id: String): ExpenseEntity?
@@ -61,6 +63,7 @@ class ExpenseRepositoryImpl @Inject constructor(
 
     override fun observeByVehicle(id: String) = expenses.observeByVehicle(id)
     override fun observeSum(id: String, from: Long, to: Long) = expenses.observeSum(id, from, to)
+    override fun observeMinOdometer(id: String) = expenses.observeMinOdometer(id)
     override fun observeByCategory(id: String, from: Long, to: Long) = expenses.observeByCategory(id, from, to)
     override fun observeOne(id: String) = expenses.observeOne(id)
     override suspend fun get(id: String) = expenses.get(id)
