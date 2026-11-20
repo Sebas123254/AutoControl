@@ -16,5 +16,8 @@ interface GoalDao {
     @Query("DELETE FROM goals WHERE id = :id") suspend fun delete(id: String)
 
     @Query("SELECT * FROM goals") suspend fun getAllOnce(): List<GoalEntity>
+
+    @Query("SELECT * FROM goals WHERE vehicleId = :vehicleId")
+    suspend fun getByVehicleOnce(vehicleId: String): List<GoalEntity>
     @Query("DELETE FROM goals") suspend fun deleteAll()
 }

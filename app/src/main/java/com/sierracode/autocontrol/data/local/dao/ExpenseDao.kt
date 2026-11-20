@@ -44,6 +44,9 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM maintenance_details WHERE expenseId = :id")
     suspend fun getMaintenanceDetail(id: String): MaintenanceDetailEntity?
+
+    @Query("SELECT * FROM expenses WHERE vehicleId = :vehicleId")
+    suspend fun getByVehicleOnce(vehicleId: String): List<ExpenseEntity>
 }
 
 data class CategoryTotalRow(val categoryId: String, val totalCents: Long, val count: Int)

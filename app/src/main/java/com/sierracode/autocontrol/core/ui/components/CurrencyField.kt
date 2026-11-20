@@ -14,6 +14,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.sierracode.autocontrol.core.ui.theme.AutoControlTheme
+import com.sierracode.autocontrol.core.util.NumberParser
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 /**
  * Campo de moneda.
@@ -38,18 +41,36 @@ fun CurrencyField(
     OutlinedTextField(
         value = value,
         onValueChange = { raw ->
-            val normalized = raw.replace(',', '.')
-            val filtered = buildString {
-                var dotSeen = false
-                var decimals = 0
-                for (c in normalized) {
-                    when {
-                        c.isDigit() -> {
-                            if (dotSeen) {
-                                if (decimals < 2) { append(c); decimals++ }
-                            } else append(c)
+            val sanitized = raw.replace(" ", "").replace("\u00A0", "")
+            val commaCount = sanitized.count { it == ',' }
+            val dotCount = sanitized.count { it == '.' }
+            val looksLikePaste =
+                (commaCount > 0 && dotCount > 0) || commaCount > 1 || dotCount > 1
+
+            val filtered = if (looksLikePaste) {
+                val parsed = NumberParser.parse(sanitized)
+                when {
+                    parsed == null -> ""
+                    parsed == parsed.toLong().toDouble() && kotlin.math.abs(parsed) < 1e15 ->
+                        parsed.toLong().toString()
+                    else -> BigDecimal.valueOf(parsed)
+                        .setScale(2, RoundingMode.HALF_UP)
+                        .toPlainString()
+                }
+            } else {
+                val normalized = sanitized.replace(',', '.')
+                buildString {
+                    var dotSeen = false
+                    var decimals = 0
+                    for (c in normalized) {
+                        when {
+                            c.isDigit() -> {
+                                if (dotSeen) {
+                                    if (decimals < 2) { append(c); decimals++ }
+                                } else append(c)
+                            }
+                            c == '.' && !dotSeen -> { append(c); dotSeen = true }
                         }
-                        c == '.' && !dotSeen -> { append(c); dotSeen = true }
                     }
                 }
             }

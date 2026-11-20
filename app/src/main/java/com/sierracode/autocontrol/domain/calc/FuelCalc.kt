@@ -35,43 +35,73 @@ fun consumptionBetween(previous: FuelPoint, current: FuelPoint): FuelConsumption
     )
 }
 
+/**
+ * Consumo promedio (km/L) con el método tanque lleno a tanque lleno.
+ * Entre dos tanques llenos con odómetro suma los litros de TODAS las cargas posteriores
+ * al primero (incluidas las parciales) hasta el segundo. Los tramos con odómetro que no
+ * crece se ignoran. Devuelve null si no hay al menos un tramo válido.
+ */
+fun averageFullTankConsumption(points: List<FuelPoint>): Double? {
+    val sorted = points.sortedWith(
+        compareBy<FuelPoint>({ it.epochDay }, { it.odometer ?: Long.MAX_VALUE })
+    )
+    var totalKm = 0L
+    var totalLiters = 0.0
+    var anchorOdo: Long? = null
+    var litersSinceAnchor = 0.0
+
+    for (p in sorted) {
+        if (anchorOdo != null) litersSinceAnchor += p.liters
+        val odo = p.odometer
+        if (p.fullTank && odo != null) {
+            val prev = anchorOdo
+            if (prev != null) {
+                val km = odo - prev
+                if (km > 0L && litersSinceAnchor > 0.0) {
+                    totalKm += km
+                    totalLiters += litersSinceAnchor
+                }
+            }
+            anchorOdo = odo
+            litersSinceAnchor = 0.0
+        }
+    }
+    return if (totalKm > 0L && totalLiters > 0.0) totalKm / totalLiters else null
+}
+
 data class FuelSummary(
     val avgKmPerLiter: Double?,
     val avgPricePerLiterCents: Double?,
     val totalLiters: Double,
     val totalSpentCents: Long,
     val monthlyAvgSpentCents: Long?,
-    val annualSpentCents: Long
+    val last12MonthsSpentCents: Long
 )
 
-fun summarizeFuel(points: List<FuelPoint>): FuelSummary {
+fun summarizeFuel(points: List<FuelPoint>, today: LocalDate = LocalDate.now()): FuelSummary {
     if (points.isEmpty()) return FuelSummary(null, null, 0.0, 0L, null, 0L)
 
     val totalLiters = points.sumOf { it.liters }
     val totalSpent = points.sumOf { it.amountCents }
 
-    val consumptions = mutableListOf<Double>()
-    for (i in 1 until points.size) {
-        consumptionBetween(points[i - 1], points[i])?.let { consumptions += it.kmPerLiter }
-    }
-    val avgKmPerLiter = if (consumptions.isEmpty()) null else consumptions.average()
+    val avgKmPerLiter = averageFullTankConsumption(points)
 
     val pricePerLiter = points.filter { it.liters > 0 }
         .map { it.amountCents / it.liters }
         .takeIf { it.isNotEmpty() }?.average()
 
-    // --- CORRECCIÓN DE FECHAS ---
-    // Agrupamos por mes/año real, no por bloques de 30 días
+    // Promedio mensual: agrupa por mes/año real, no por bloques de 30 días
     val distinctMonths = points.map {
         YearMonth.from(LocalDate.ofEpochDay(it.epochDay))
     }.distinct().size
     val monthlyAvg = if (distinctMonths > 0) totalSpent / distinctMonths else null
 
-    // Gasto anual: sumamos solo los puntos del mismo año que la última carga registrada
-    val lastYear = LocalDate.ofEpochDay(points.last().epochDay).year
-    val annualSpent = points.filter {
-        LocalDate.ofEpochDay(it.epochDay).year == lastYear
-    }.sumOf { it.amountCents }
+    // Gasto de los últimos 12 meses reales, contados hacia atrás desde hoy
+    val windowStart = today.minusYears(1).toEpochDay()
+    val windowEnd = today.toEpochDay()
+    val last12Months = points
+        .filter { it.epochDay in windowStart..windowEnd }
+        .sumOf { it.amountCents }
 
     return FuelSummary(
         avgKmPerLiter = avgKmPerLiter,
@@ -79,6 +109,6 @@ fun summarizeFuel(points: List<FuelPoint>): FuelSummary {
         totalLiters = totalLiters,
         totalSpentCents = totalSpent,
         monthlyAvgSpentCents = monthlyAvg,
-        annualSpentCents = annualSpent // Ahora sí es anual
+        last12MonthsSpentCents = last12Months
     )
 }

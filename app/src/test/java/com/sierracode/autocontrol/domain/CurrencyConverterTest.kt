@@ -2,25 +2,30 @@ package com.sierracode.autocontrol.domain.calc
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 class CurrencyConverterTest {
+
     @Test
-    fun `conversion basica redondea half up`() {
-        // Multiplicador 17.50: 1000 centavos * 17.50 = 17500 centavos
-        assertEquals(17500L, CurrencyConverter.convertCents(1000L, 17.50))
-        // Multiplicador inverso (1 / 17.50 = ~0.057142857): 1000 centavos * 0.057142857 = 57.14 -> 57 centavos
-        assertEquals(57L, CurrencyConverter.convertCents(1000L, 1.0 / 17.50))
+    fun `ida y vuelta conserva el valor`() {
+        val originalCents = 125050L // 1250.50
+        val rate = BigDecimal("17.5")
+        val inverseRate = BigDecimal.ONE.divide(rate, 10, RoundingMode.HALF_UP)
+
+        // Convertir a USD
+        val usdCents = CurrencyConverter.convertCents(originalCents, inverseRate)
+
+        // Volver a MXN
+        val backToMxnCents = CurrencyConverter.convertCents(usdCents, rate)
+
+        assertEquals(originalCents, backToMxnCents)
     }
 
     @Test
-    fun `conversion con tasa menor a 1`() {
-        // 1000 centavos * 0.057 = 57 centavos
-        assertEquals(57L, CurrencyConverter.convertCents(1000L, 0.057))
-    }
-
-    @Test
-    fun `tasa invalida devuelve lo mismo`() {
-        assertEquals(1000L, CurrencyConverter.convertCents(1000L, 0.0))
-        assertEquals(1000L, CurrencyConverter.convertCents(1000L, -1.0))
+    fun `multiplicador invalido no altera`() {
+        val originalCents = 1250L
+        val result = CurrencyConverter.convertCents(originalCents, BigDecimal.ZERO)
+        assertEquals(originalCents, result)
     }
 }

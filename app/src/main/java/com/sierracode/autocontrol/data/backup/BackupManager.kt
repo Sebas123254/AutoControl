@@ -47,10 +47,8 @@ class BackupManager @Inject constructor(
     // =========================================================================
     // EXPORTACIÓN
     // =========================================================================
-    suspend fun exportToZip(uri: Uri): Result<BackupStats> = withContext(Dispatchers.IO) {
-        val tempZip = File(context.cacheDir, "backup_temp_${System.currentTimeMillis()}.zip")
+    private suspend fun createZipFile(outputFile: File): Result<BackupStats> = withContext(Dispatchers.IO) {
         try {
-            // 1. Snapshot consistente de todas las tablas dentro de una sola transacción
             val (backup, actualFiles) = db.withTransaction {
                 val vehicles = db.vehicleDao().getAllOnce()
                 val expenses = db.expenseDao().getAllOnce()
@@ -62,7 +60,6 @@ class BackupManager @Inject constructor(
                 val reminders = db.reminderDao().getAllOnce()
                 val goals = db.goalDao().getAllOnce()
 
-                // Recolectar archivos referenciados
                 val referencedNames = mutableSetOf<String>()
                 attachments.forEach { if (it.uri.isNotBlank()) referencedNames.add(it.uri.substringAfterLast("/")) }
                 documents.forEach { doc -> doc.fileUri?.let { if (it.isNotBlank()) referencedNames.add(it.substringAfterLast("/")) } }
@@ -92,15 +89,12 @@ class BackupManager @Inject constructor(
 
             val jsonString = json.encodeToString(BackupData.serializer(), backup)
 
-            // 2. Escribir a un archivo temporal primero
-            FileOutputStream(tempZip).use { fos ->
+            FileOutputStream(outputFile).use { fos ->
                 ZipOutputStream(fos).use { zipOut ->
-                    // Entrada backup.json
                     zipOut.putNextEntry(ZipEntry("backup.json"))
                     zipOut.write(jsonString.toByteArray(Charsets.UTF_8))
                     zipOut.closeEntry()
 
-                    // Entradas de archivos deduplicados
                     actualFiles.forEach { file ->
                         zipOut.putNextEntry(ZipEntry(file.name))
                         file.inputStream().use { it.copyTo(zipOut) }
@@ -109,28 +103,49 @@ class BackupManager @Inject constructor(
                 }
             }
 
-            // 3. Copiar al destino final vía ContentResolver con "wt"
-            val outputStream = context.contentResolver.openOutputStream(uri, "wt")
-                ?: throw BackupError.CannotWrite()
-
-            outputStream.use { os ->
-                tempZip.inputStream().use { isStream -> isStream.copyTo(os) }
-            }
-
             val totalRecords = backup.vehicles.size + backup.expenses.size + backup.documents.size
             Result.success(BackupStats(totalRecords, actualFiles.size))
         } catch (ce: CancellationException) {
             throw ce
         } catch (be: BackupError) {
-            Log.e(TAG, "Error durante la exportación de respaldo: ${be.message}", be)
+            Log.e(TAG, "Error al crear ZIP: ${be.message}", be)
             Result.failure(be)
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción inesperada al exportar respaldo", e)
+            Log.e(TAG, "Excepción al crear ZIP", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun exportToZip(uri: Uri): Result<BackupStats> = withContext(Dispatchers.IO) {
+        val tempZip = File(context.cacheDir, "backup_temp_${System.currentTimeMillis()}.zip")
+        try {
+            val result = createZipFile(tempZip)
+            if (result.isSuccess) {
+                val outputStream = context.contentResolver.openOutputStream(uri, "wt")
+                    ?: throw BackupError.CannotWrite()
+                outputStream.use { os ->
+                    tempZip.inputStream().use { isStream -> isStream.copyTo(os) }
+                }
+            }
+            result
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copiando ZIP a destino", e)
             Result.failure(e)
         } finally {
-            if (tempZip.exists()) {
-                tempZip.delete()
-            }
+            if (tempZip.exists()) tempZip.delete()
+        }
+    }
+
+    suspend fun createInternalBackup(): Result<File> = withContext(Dispatchers.IO) {
+        val backupsDir = File(context.filesDir, "backups").apply { mkdirs() }
+        val backupFile = File(backupsDir, "auto_backup_${System.currentTimeMillis()}.zip")
+        val result = createZipFile(backupFile)
+        if (result.isSuccess) {
+            Result.success(backupFile)
+        } else {
+            Result.failure(result.exceptionOrNull() ?: Exception("Unknown error"))
         }
     }
 
@@ -326,6 +341,7 @@ private fun ExpenseEntity.toDto() = ExpenseDto(
     establishment = establishment,
     paymentMethod = paymentMethod,
     notes = notes,
+    currencyCode = currencyCode,
     createdAt = createdAt,
     updatedAt = updatedAt
 )

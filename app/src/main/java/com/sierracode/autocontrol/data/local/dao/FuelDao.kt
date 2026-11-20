@@ -19,6 +19,9 @@ interface FuelDao {
     @Upsert suspend fun upsert(detail: com.sierracode.autocontrol.data.local.entity.FuelDetailEntity)
 
     @Query("SELECT * FROM fuel_details") suspend fun getAllOnce(): List<FuelDetailEntity>
+
+    @Query("SELECT f.* FROM fuel_details f INNER JOIN expenses e ON f.expenseId = e.id WHERE e.vehicleId = :vehicleId")
+    suspend fun getByVehicleOnce(vehicleId: String): List<FuelDetailEntity>
     data class FuelWithExpense(
         val id: String, val vehicleId: String, val amountCents: Long,
         val dateEpochDay: Long, val odometer: Long?, val litersMilli: Long,

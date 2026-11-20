@@ -59,6 +59,7 @@ data class ExpenseEntity(
     val establishment: String? = null,
     val paymentMethod: String? = null,
     val notes: String? = null,
+    val currencyCode: String = "MXN",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

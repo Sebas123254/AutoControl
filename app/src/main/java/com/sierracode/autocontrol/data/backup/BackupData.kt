@@ -68,6 +68,7 @@ data class ExpenseDto(
     val establishment: String?,
     val paymentMethod: String?,
     val notes: String?,
+    val currencyCode: String = "MXN",
     val createdAt: Long,
     val updatedAt: Long
 )

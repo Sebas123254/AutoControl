@@ -292,6 +292,9 @@
     <string name="stats_others">Others</string>
     <string name="stats_chart_desc">Monthly evolution chart. </string>
     <string name="stats_tooltip_tap">Tap the chart to see amounts</string>
+    <string name="stats_range_6">6 months</string>
+    <string name="stats_range_12">12 months</string>
+    <string name="stats_range_all">All</string>
 
     <!-- Recordatorios -->
     <string name="reminders_title">Reminders</string>
@@ -329,6 +332,9 @@
     <string name="settings_imperial">Imperial (mi/gal)</string>
     <string name="settings_convert_title">Change currency to %1$s</string>
     <string name="settings_convert_rate">Exchange rate</string>
+    <string name="settings_convert_rate_invalid">Enter a valid rate greater than zero</string>
+    <string name="settings_convert_backup_error">Could not create the safety backup. Conversion cancelled.</string>
+    <string name="settings_convert_error">Conversion error: %1$s</string>
     <string name="settings_convert_warning">All historical expenses for this vehicle will be converted to the new currency.</string>
     <string name="settings_convert_no_convert">Do not convert, just change label</string>
     <string name="settings_convert_success">Currency converted to %1$s</string>

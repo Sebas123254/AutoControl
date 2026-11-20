@@ -16,21 +16,28 @@ data class ExpenseFilterState(
     val categoryIds: Set<String> = emptySet()
 )
 
+// El patrón se compila una sola vez, no en cada llamada.
+private val DIACRITICS_REGEX = "\\p{InCombiningDiacriticalMarks}+".toRegex()
+
 // Normaliza texto: minúsculas, sin acentos, sin espacios extra
 fun normalizeText(text: String): String {
     if (text.isBlank()) return ""
     val normalized = Normalizer.normalize(text, Normalizer.Form.NFD)
-    val regex = "\\p{InCombiningDiacriticalMarks}+".toRegex()
-    return regex.replace(normalized, "")
+    return DIACRITICS_REGEX.replace(normalized, "")
         .lowercase(Locale.getDefault())
         .trim()
 }
 
+/**
+ * @param categoryNames id de categoría -> nombre localizado (el que ve el usuario).
+ *   Opcional: si se omite, solo se busca por el nombre guardado en la base de datos.
+ */
 fun filterExpenses(
     expenses: List<ExpenseEntity>,
     categories: List<CategoryEntity>,
     filterState: ExpenseFilterState,
-    today: YearMonth = YearMonth.now(ZoneId.systemDefault())
+    today: YearMonth = YearMonth.now(ZoneId.systemDefault()),
+    categoryNames: Map<String, String> = emptyMap()
 ): List<ExpenseEntity> {
     val normalizedQuery = normalizeText(filterState.query)
 
@@ -57,10 +64,17 @@ fun filterExpenses(
     // 3. Filtro por texto y monto
     if (normalizedQuery.isEmpty()) return categoryFiltered
 
+    // Se calculan una sola vez, no por cada gasto
+    val rawNames = categories.associate { it.id to normalizeText(it.name) }
+    val localizedNames = categoryNames.mapValues { normalizeText(it.value) }
+    val amountQuery = filterState.query.trim().replace(',', '.')
+    val amountQueryHasDigit = amountQuery.any { it.isDigit() }
+
     return categoryFiltered.filter { expense ->
-        // Categoría
-        val categoryName = categories.find { it.id == expense.categoryId }?.name ?: ""
-        val matchesCategory = normalizeText(categoryName).contains(normalizedQuery)
+        // Categoría (nombre guardado o nombre localizado)
+        val matchesCategory =
+            rawNames[expense.categoryId]?.contains(normalizedQuery) == true ||
+                    localizedNames[expense.categoryId]?.contains(normalizedQuery) == true
 
         // Otros textos
         val matchesDescription = normalizeText(expense.description ?: "").contains(normalizedQuery)
@@ -68,9 +82,9 @@ fun filterExpenses(
         val matchesNotes = normalizeText(expense.notes ?: "").contains(normalizedQuery)
         val matchesEstablishment = normalizeText(expense.establishment ?: "").contains(normalizedQuery)
 
-        // Monto (ej. "450" o "450.50")
+        // Monto (ej. "450", "450.50" o "450,50")
         val amountStr = String.format(Locale.US, "%.2f", expense.amountCents / 100.0)
-        val matchesAmount = amountStr.contains(normalizedQuery)
+        val matchesAmount = amountQueryHasDigit && amountStr.contains(amountQuery)
 
         matchesCategory || matchesDescription || matchesCustom || matchesNotes || matchesEstablishment || matchesAmount
     }

@@ -34,6 +34,8 @@ import com.sierracode.autocontrol.data.preferences.SettingsStore
 import com.sierracode.autocontrol.data.preferences.UnitSystem
 import com.sierracode.autocontrol.data.repository.CurrencyRepository
 import com.sierracode.autocontrol.data.repository.VehicleRepository
+import com.sierracode.autocontrol.data.backup.BackupManager
+import com.sierracode.autocontrol.core.util.NumberParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -46,12 +48,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settings: SettingsStore,
     private val vehicleRepo: VehicleRepository,
     private val currencyRepo: CurrencyRepository,
+    private val backupManager: com.sierracode.autocontrol.data.backup.BackupManager,
     private val db: AutoControlDatabase,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -95,19 +100,45 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun convertCurrency(newCurrency: String, inputRate: Double, onDone: () -> Unit) = viewModelScope.launch {
-        settings.setCurrency(newCurrency)
+    private val _isConverting = MutableStateFlow(false)
+    val isConverting = _isConverting.asStateFlow()
+
+    fun convertCurrency(newCurrency: String, rate: Double, onDone: () -> Unit, onError: (String) -> Unit) = viewModelScope.launch {
         val activeId = settings.activeVehicleId.first()
-        if (activeId != null) {
-            val current = currentCurrency.value
-            val multiplier = when {
-                newCurrency == "MXN" && current != "MXN" -> inputRate
-                current == "MXN" && newCurrency != "MXN" -> 1.0 / inputRate
-                else -> 1.0 / inputRate
-            }
-            currencyRepo.convertAll(activeId, newCurrency, multiplier)
+        if (activeId == null) {
+            settings.setCurrency(newCurrency)
+            onDone()
+            return@launch
         }
-        onDone()
+        _isConverting.value = true
+        try {
+            // 1. Crear respaldo interno de seguridad
+            val backupResult = backupManager.createInternalBackup()
+            if (backupResult.isFailure) {
+                onError(context.getString(R.string.settings_convert_backup_error))
+                return@launch
+            }
+
+            // 2. Calcular multiplicador con BigDecimal
+            val current = currentCurrency.value
+            val rateBigDecimal = BigDecimal(rate.toString())
+            val multiplier = when {
+                newCurrency == "MXN" && current != "MXN" -> rateBigDecimal
+                current == "MXN" && newCurrency != "MXN" -> BigDecimal.ONE.divide(rateBigDecimal, 10, RoundingMode.HALF_UP)
+                else -> BigDecimal.ONE.divide(rateBigDecimal, 10, RoundingMode.HALF_UP)
+            }
+
+            // 3. Convertir de forma atómica
+            currencyRepo.convertAll(activeId, newCurrency, multiplier)
+            settings.setCurrency(newCurrency)
+            onDone()
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            onError(context.getString(R.string.settings_convert_error, e.message ?: ""))
+        } finally {
+            _isConverting.value = false
+        }
     }
 
     fun deleteAllData(onSuccess: () -> Unit, onError: (String) -> Unit) =
@@ -149,6 +180,8 @@ fun SettingsScreen(
     val currency by vm.currentCurrency.collectAsStateWithLifecycle()
     val units by vm.currentUnitSystem.collectAsStateWithLifecycle()
     val isDeleting by vm.isDeleting.collectAsStateWithLifecycle()
+    val isConverting by vm.isConverting.collectAsStateWithLifecycle()
+
 
     var showCurrencyMenu by remember { mutableStateOf(false) }
     var showConversionDialog by remember { mutableStateOf(false) }
@@ -156,12 +189,13 @@ fun SettingsScreen(
     var targetCurrency by remember { mutableStateOf("") }
     var rateInput by remember { mutableStateOf("") }
     var ratePrompt by remember { mutableStateOf("") }
+    var rateError by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val successConvertText = stringResource(R.string.settings_convert_success)
-    val noConvertSuccessText = stringResource(R.string.settings_convert_no_convert_success)
+    val successConvertText = stringResource(R.string.settings_convert_success, targetCurrency)
+    val noConvertSuccessText = stringResource(R.string.settings_convert_no_convert_success, targetCurrency)
     val deleteAllSuccessText = stringResource(R.string.settings_delete_all_success)
     val deleteAllErrorText = stringResource(R.string.settings_delete_all_error)
     val proActivatedText = stringResource(R.string.settings_pro_activated)
@@ -185,8 +219,12 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = rateInput,
-                        onValueChange = { rateInput = it },
+                        onValueChange = { rateInput = it; rateError = false },
                         label = { Text(stringResource(R.string.settings_convert_rate)) },
+                        isError = rateError,
+                        supportingText = if (rateError) {
+                            { Text(stringResource(R.string.settings_convert_rate_invalid)) }
+                        } else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -202,31 +240,53 @@ fun SettingsScreen(
                     TextButton(
                         onClick = {
                             showConversionDialog = false
-                            vm.convertCurrency(targetCurrency, 1.0) {
-                                scope.launch { snackbarHostState.showSnackbar(noConvertSuccessText) }
-                            }
+                            vm.convertCurrency(
+                                newCurrency = targetCurrency,
+                                rate = 1.0,
+                                onDone = { scope.launch { snackbarHostState.showSnackbar(noConvertSuccessText) } },
+                                onError = { errorMsg -> scope.launch { snackbarHostState.showSnackbar(errorMsg) } }
+                            )
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isConverting
                     ) {
                         Text(stringResource(R.string.settings_convert_no_convert))
                     }
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        val rate = rateInput.toDoubleOrNull()
-                        if (rate != null && rate > 0) {
-                            showConversionDialog = false
-                            vm.convertCurrency(targetCurrency, rate) {
-                                scope.launch { snackbarHostState.showSnackbar(successConvertText) }
+                if (isConverting) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp))
+                } else {
+                    TextButton(
+                        onClick = {
+                            val rate = com.sierracode.autocontrol.core.util.NumberParser.parse(rateInput)
+                            if (rate != null && rate > 0) {
+                                rateError = false
+                                vm.convertCurrency(
+                                    newCurrency = targetCurrency,
+                                    rate = rate,
+                                    onDone = {
+                                        showConversionDialog = false
+                                        scope.launch { snackbarHostState.showSnackbar(successConvertText) }
+                                    },
+                                    onError = { errorMsg ->
+                                        showConversionDialog = false
+                                        scope.launch { snackbarHostState.showSnackbar(errorMsg) }
+                                    }
+                                )
+                            } else {
+                                rateError = true
                             }
                         }
-                    }
-                ) { Text(stringResource(R.string.action_ok)) }
+                    ) { Text(stringResource(R.string.action_ok)) }
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showConversionDialog = false }) { Text(stringResource(R.string.action_cancel)) }
+                TextButton(
+                    onClick = { rateError = false; showConversionDialog = false },
+                    enabled = !isConverting
+                ) { Text(stringResource(R.string.action_cancel)) }
             }
         )
     }
@@ -411,6 +471,7 @@ fun SettingsScreen(
                                     onClick = {
                                         showCurrencyMenu = false
                                         if (code != currency) {
+                                            rateError = false
                                             targetCurrency = code
                                             if (code == "MXN") {
                                                 rateInput = if (currency == "USD") "17.50" else "18.50"

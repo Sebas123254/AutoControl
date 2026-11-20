@@ -1,6 +1,7 @@
 package com.sierracode.autocontrol.core.format
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalConfiguration
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.data.preferences.EfficiencyFormat
 import com.sierracode.autocontrol.data.preferences.UnitSystem
@@ -11,37 +12,64 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToLong
+
+// Los formateadores se crean una sola vez por idioma y divisa, no en cada composición.
+private val moneyFormats = ConcurrentHashMap<String, NumberFormat>()
+private val numberFormats = ConcurrentHashMap<String, NumberFormat>()
+
+/** Idioma actual leído de forma observable: si el usuario cambia el idioma, la pantalla se recompone. */
+@Composable
+private fun currentLocale(): Locale = LocalConfiguration.current.locales[0]
+
+private fun moneyFormat(locale: Locale, currency: Currency): NumberFormat =
+    moneyFormats.getOrPut("${locale.toLanguageTag()}|${currency.currencyCode}") {
+        NumberFormat.getCurrencyInstance(locale).apply {
+            this.currency = currency
+            val digits = currency.defaultFractionDigits.coerceAtLeast(0)
+            minimumFractionDigits = digits
+            maximumFractionDigits = digits
+        }
+    }
+
+private fun decimalFormat(locale: Locale): NumberFormat =
+    numberFormats.getOrPut("${locale.toLanguageTag()}|dec2") {
+        NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits = 2 }
+    }
+
+private fun integerFormat(locale: Locale): NumberFormat =
+    numberFormats.getOrPut("${locale.toLanguageTag()}|int") {
+        NumberFormat.getIntegerInstance(locale)
+    }
+
+// NumberFormat no es thread-safe: se sincroniza al usar la instancia compartida.
+private fun NumberFormat.safeFormat(value: Double): String = synchronized(this) { format(value) }
+private fun NumberFormat.safeFormat(value: Long): String = synchronized(this) { format(value) }
 
 @Composable
 fun formatMoneyCents(cents: Long?): String {
     if (cents == null) return "—"
     val config = LocalAppConfig.current
-    val locale = Locale.getDefault()
+    val locale = currentLocale()
     val currency = try {
         Currency.getInstance(config.currencyCode)
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         Currency.getInstance("MXN")
     }
-
-    val money = NumberFormat.getCurrencyInstance(locale).apply {
-        this.currency = currency
-        maximumFractionDigits = 2
-    }
-
     val suffix = if (config.currencyCode == "MXN" && locale.language != "en") " ${config.currencyCode}" else ""
-    return "${money.format(cents / 100.0)}$suffix"
+    return "${moneyFormat(locale, currency).safeFormat(cents / 100.0)}$suffix"
 }
 
 @Composable
 fun formatKm(km: Long?): String {
     if (km == null) return "—"
     val config = LocalAppConfig.current
+    val nf = integerFormat(currentLocale())
     return if (config.unitSystem == UnitSystem.METRIC) {
-        "${NumberFormat.getIntegerInstance().format(km)} km"
+        "${nf.safeFormat(km)} km"
     } else {
-        val miles = UnitConverter.kmToMiles(km).roundToLong()
-        "${NumberFormat.getIntegerInstance().format(miles)} mi"
+        "${nf.safeFormat(UnitConverter.kmToMiles(km).roundToLong())} mi"
     }
 }
 
@@ -49,11 +77,11 @@ fun formatKm(km: Long?): String {
 fun formatEfficiency(kmPerLiter: Double?): String {
     if (kmPerLiter == null) return "—"
     val config = LocalAppConfig.current
-    val fmt = NumberFormat.getNumberInstance().apply { maximumFractionDigits = 2 }
+    val fmt = decimalFormat(currentLocale())
     return when (config.efficiencyFormat) {
-        EfficiencyFormat.KM_PER_L -> "${fmt.format(kmPerLiter)} km/L"
-        EfficiencyFormat.L_PER_100KM -> "${fmt.format(UnitConverter.kmPerLiterToLPer100Km(kmPerLiter))} L/100km"
-        EfficiencyFormat.MPG_US -> "${fmt.format(UnitConverter.kmPerLiterToMpg(kmPerLiter))} MPG"
+        EfficiencyFormat.KM_PER_L -> "${fmt.safeFormat(kmPerLiter)} km/L"
+        EfficiencyFormat.L_PER_100KM -> "${fmt.safeFormat(UnitConverter.kmPerLiterToLPer100Km(kmPerLiter))} L/100km"
+        EfficiencyFormat.MPG_US -> "${fmt.safeFormat(UnitConverter.kmPerLiterToMpg(kmPerLiter))} MPG"
     }
 }
 
@@ -61,12 +89,11 @@ fun formatEfficiency(kmPerLiter: Double?): String {
 fun formatVolume(litersMilli: Long?): String {
     if (litersMilli == null) return "—"
     val config = LocalAppConfig.current
+    val nf = decimalFormat(currentLocale())
     return if (config.unitSystem == UnitSystem.METRIC) {
-        val l = litersMilli / 1000.0
-        "${NumberFormat.getNumberInstance().apply { maximumFractionDigits = 2 }.format(l)} L"
+        "${nf.safeFormat(litersMilli / 1000.0)} L"
     } else {
-        val gal = UnitConverter.litersMilliToGallons(litersMilli)
-        "${NumberFormat.getNumberInstance().apply { maximumFractionDigits = 2 }.format(gal)} gal"
+        "${nf.safeFormat(UnitConverter.litersMilliToGallons(litersMilli))} gal"
     }
 }
 
