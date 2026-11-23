@@ -30,6 +30,7 @@ import com.sierracode.autocontrol.core.format.formatCostPerDistance
 import com.sierracode.autocontrol.core.format.formatEfficiency
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.core.ui.components.IconBubble
 import com.sierracode.autocontrol.core.ui.components.StatusChip
@@ -48,6 +49,12 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 enum class SummaryPeriod { THIS_MONTH, LAST_MONTH, THIS_YEAR, ALL_TIME }
+
+data class SpendingComparison(
+    val percentage: Double,
+    val isIncrease: Boolean,
+    val labelPeriodRes: Int
+)
 
 data class EvaluatedSchedule(
     val id: String,
@@ -97,6 +104,23 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
+    val spendingComparison = vehicleIdFlow.flatMapLatest { id ->
+        if (id == null) flowOf(null) else summaryPeriodFlow.flatMapLatest { period ->
+            val prevRange = getPreviousPeriodRange(period)
+            if (prevRange == null) {
+                flowOf(null)
+            } else {
+                val currentRange = getPeriodRange(period)
+                combine(
+                    expenseRepo.observeSum(id, currentRange.first, currentRange.second).map { it ?: 0L },
+                    expenseRepo.observeSum(id, prevRange.first, prevRange.second).map { it ?: 0L }
+                ) { currentSpent, prevSpent ->
+                    calculateComparison(currentSpent, prevSpent, period)
+                }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val allTimeSpent = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(0L) else expenseRepo.observeSum(id, 0L, Long.MAX_VALUE).map { it ?: 0L }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
@@ -108,12 +132,6 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /**
-     * Costo por km: gasto total histórico / km recorridos.
-     * Solo considera gastos que tienen odómetro válido para evitar subestimar
-     * los km recorridos (bug previo: usaba `vehicle.odometer` como fallback,
-     * lo cual inflaba el costo).
-     */
     val costPerKm = vehicleIdFlow.flatMapLatest { id ->
         if (id == null) flowOf(null) else combine(
             vehicleRepo.observe(id),
@@ -213,6 +231,51 @@ class DashboardViewModel @Inject constructor(
             SummaryPeriod.ALL_TIME -> 0L to today.toEpochDay()
         }
     }
+
+    private fun getPreviousPeriodRange(period: SummaryPeriod): Pair<Long, Long>? {
+        val today = LocalDate.now()
+        return when (period) {
+            SummaryPeriod.THIS_MONTH -> {
+                val lastMonth = today.minusMonths(1)
+                lastMonth.withDayOfMonth(1).toEpochDay() to lastMonth.withDayOfMonth(lastMonth.lengthOfMonth()).toEpochDay()
+            }
+            SummaryPeriod.LAST_MONTH -> {
+                val twoMonthsAgo = today.minusMonths(2)
+                twoMonthsAgo.withDayOfMonth(1).toEpochDay() to twoMonthsAgo.withDayOfMonth(twoMonthsAgo.lengthOfMonth()).toEpochDay()
+            }
+            SummaryPeriod.THIS_YEAR -> {
+                val lastYear = today.minusYears(1)
+                lastYear.withDayOfYear(1).toEpochDay() to lastYear.withDayOfYear(lastYear.lengthOfYear()).toEpochDay()
+            }
+            SummaryPeriod.ALL_TIME -> null
+        }
+    }
+
+    private fun calculateComparison(
+        currentSpent: Long,
+        previousSpent: Long,
+        period: SummaryPeriod
+    ): SpendingComparison? {
+        if (period == SummaryPeriod.ALL_TIME) return null
+        if (previousSpent <= 0L) return null
+        if (currentSpent == previousSpent) return null
+
+        val diff = currentSpent - previousSpent
+        val percentage = (diff.toDouble() / previousSpent.toDouble()) * 100.0
+
+        val labelRes = when (period) {
+            SummaryPeriod.THIS_MONTH -> R.string.dashboard_spending_vs_last_month
+            SummaryPeriod.LAST_MONTH -> R.string.dashboard_spending_vs_prev_month
+            SummaryPeriod.THIS_YEAR -> R.string.dashboard_spending_vs_last_year
+            SummaryPeriod.ALL_TIME -> return null
+        }
+
+        return SpendingComparison(
+            percentage = kotlin.math.abs(percentage),
+            isIncrease = diff > 0,
+            labelPeriodRes = labelRes
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -234,6 +297,7 @@ fun DashboardScreen(
     val vehicle by vm.vehicle.collectAsStateWithLifecycle()
     val allVehicles by vm.allVehicles.collectAsStateWithLifecycle()
     val totalSpent by vm.totalSpent.collectAsStateWithLifecycle()
+    val spendingComparison by vm.spendingComparison.collectAsStateWithLifecycle()
     val allTimeSpent by vm.allTimeSpent.collectAsStateWithLifecycle()
     val dueReminders by vm.dueReminders.collectAsStateWithLifecycle()
     val costPerKm by vm.costPerKm.collectAsStateWithLifecycle()
@@ -459,6 +523,9 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // ============================
+                // 1. Tarjeta del vehículo (sin cambios)
+                // ============================
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
@@ -483,120 +550,84 @@ fun DashboardScreen(
                     }
                 }
 
+                // ============================
+                // 2. Acciones rápidas (sin cambios)
+                // ============================
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     QuickActionButton(Icons.Default.LocalGasStation, stringResource(R.string.dashboard_action_fuel), onRegisterFuel, Modifier.weight(1f))
                     QuickActionButton(Icons.Default.Receipt, stringResource(R.string.dashboard_action_expense), onRegisterExpense, Modifier.weight(1f))
                     QuickActionButton(Icons.Default.Build, stringResource(R.string.dashboard_action_maint), onRegisterMaintenance, Modifier.weight(1f))
                 }
 
-                val topSchedule = schedules.firstOrNull()
-                if (topSchedule != null) {
-                    SectionHeader(stringResource(R.string.dashboard_next_maint), if (schedules.size > 1) stringResource(R.string.dashboard_view_all) else null) {
-                        if (schedules.size > 1) showAllSchedules = true
-                    }
-                    MaintenanceCard(topSchedule, onClick = { vm.openScheduleEditor(topSchedule) })
-                }
+                // ============================
+                // 3. RESUMEN (filtros + gasto principal + métricas secundarias)
+                // ============================
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionHeader(title = stringResource(R.string.dashboard_summary))
 
-                SectionHeader(stringResource(R.string.dashboard_performance))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = selectedPeriod == SummaryPeriod.THIS_MONTH,
-                        onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_MONTH) },
-                        label = { Text(stringResource(R.string.dashboard_period_this_month)) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    FilterChip(
-                        selected = selectedPeriod == SummaryPeriod.LAST_MONTH,
-                        onClick = { vm.setSummaryPeriod(SummaryPeriod.LAST_MONTH) },
-                        label = { Text(stringResource(R.string.dashboard_period_last_month)) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = selectedPeriod == SummaryPeriod.THIS_YEAR,
-                        onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_YEAR) },
-                        label = { Text(stringResource(R.string.dashboard_period_this_year)) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    FilterChip(
-                        selected = selectedPeriod == SummaryPeriod.ALL_TIME,
-                        onClick = { vm.setSummaryPeriod(SummaryPeriod.ALL_TIME) },
-                        label = { Text(stringResource(R.string.dashboard_period_all_time)) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    MetricCard(
-                        title = when(selectedPeriod) {
-                            SummaryPeriod.THIS_MONTH -> stringResource(R.string.dashboard_period_this_month)
-                            SummaryPeriod.LAST_MONTH -> stringResource(R.string.dashboard_period_last_month)
-                            SummaryPeriod.THIS_YEAR -> stringResource(R.string.dashboard_period_this_year)
-                            SummaryPeriod.ALL_TIME -> stringResource(R.string.dashboard_period_all_time)
-                        },
-                        value = formatMoneyCents(totalSpent),
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (costPerKm != null) {
-                        MetricCard(
-                            title = stringResource(R.string.dashboard_cost_per_km),
-                            value = formatCostPerDistance(costPerKm),
+                    // Selector general del resumen (2x2)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = selectedPeriod == SummaryPeriod.THIS_MONTH,
+                            onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_MONTH) },
+                            label = { Text(stringResource(R.string.dashboard_period_this_month)) },
                             modifier = Modifier.weight(1f)
                         )
-                    } else {
-                        MetricCard(
-                            title = stringResource(R.string.dashboard_cost_per_km),
-                            value = "—",
-                            modifier = Modifier.weight(1f),
-                            subtitle = stringResource(R.string.dashboard_no_km_data)
+                        FilterChip(
+                            selected = selectedPeriod == SummaryPeriod.LAST_MONTH,
+                            onClick = { vm.setSummaryPeriod(SummaryPeriod.LAST_MONTH) },
+                            label = { Text(stringResource(R.string.dashboard_period_last_month)) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = selectedPeriod == SummaryPeriod.THIS_YEAR,
+                            onClick = { vm.setSummaryPeriod(SummaryPeriod.THIS_YEAR) },
+                            label = { Text(stringResource(R.string.dashboard_period_this_year)) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = selectedPeriod == SummaryPeriod.ALL_TIME,
+                            onClick = { vm.setSummaryPeriod(SummaryPeriod.ALL_TIME) },
+                            label = { Text(stringResource(R.string.dashboard_period_all_time)) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    ResumenCard(
+                        periodLabelRes = when (selectedPeriod) {
+                            SummaryPeriod.THIS_MONTH -> R.string.dashboard_period_this_month
+                            SummaryPeriod.LAST_MONTH -> R.string.dashboard_period_last_month
+                            SummaryPeriod.THIS_YEAR -> R.string.dashboard_period_this_year
+                            SummaryPeriod.ALL_TIME -> R.string.dashboard_period_all_time
+                        },
+                        totalSpent = totalSpent,
+                        comparison = spendingComparison,
+                        costPerKm = costPerKm,
+                        fuelStats = fuelStats
+                    )
                 }
 
+                // ============================
+                // 4. ESTADO DEL VEHÍCULO (resumen de mantenimiento)
+                // ============================
+                VehicleStatusSection(
+                    schedules = schedules,
+                    onViewAll = { showAllSchedules = true },
+                    onScheduleClick = { vm.openScheduleEditor(it) }
+                )
+
+                // ============================
+                // 5. COSTO ACUMULADO (información secundaria)
+                // ============================
                 if (v.purchasePriceCents != null) {
-                    val totalCost = calculateTotalCost(v.purchasePriceCents, allTimeSpent)
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column(
-                            Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconBubble(Icons.Default.Savings, size = 40.dp)
-                                    Spacer(Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            stringResource(R.string.dashboard_total_cost),
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            stringResource(R.string.dashboard_purchase_price, formatMoneyCents(v.purchasePriceCents)),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                            Text(
-                                formatMoneyCents(totalCost),
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
+                    TotalCostCard(
+                        purchasePriceCents = v.purchasePriceCents,
+                        allTimeSpent = allTimeSpent
+                    )
                 } else {
                     EmptyStateCard(
                         icon = Icons.Default.Savings,
@@ -607,81 +638,276 @@ fun DashboardScreen(
                     )
                 }
 
-                SectionHeader(stringResource(R.string.dashboard_performance))
-                if (fuelStats?.avgKmL != null) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconBubble(icon = Icons.Default.LocalGasStation, size = 48.dp)
-                                Spacer(Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        stringResource(R.string.dashboard_performance_avg),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        formatEfficiency(fuelStats!!.avgKmL),
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-
-                            if (fuelStats!!.isOverconsuming && fuelStats!!.latestKmL != null) {
-                                HorizontalDivider()
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.Top,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(
-                                            stringResource(R.string.fuel_overconsumption_title),
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                        Text(
-                                            stringResource(
-                                                R.string.fuel_overconsumption_desc,
-                                                formatEfficiency(fuelStats!!.latestKmL),
-                                                fuelStats!!.consumptionDropPercent,
-                                                formatEfficiency(fuelStats!!.avgKmL)
-                                            ),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    EmptyStateCard(
-                        icon = Icons.Default.LocalGasStation,
-                        title = stringResource(R.string.dashboard_no_data),
-                        description = fuelStats?.hintResId?.let { stringResource(it) } ?: stringResource(R.string.dashboard_maint_full_hint),
-                        actionLabel = stringResource(R.string.dashboard_register_fuel),
-                        onActionClick = onRegisterFuel
-                    )
-                }
-
                 Spacer(Modifier.height(80.dp))
             }
+        }
+    }
+}
+
+// ==========================================================
+// Tarjeta principal de Resumen:
+// - Gasto del periodo = métrica principal (hero)
+// - Costo por km + Rendimiento = métricas secundarias
+// - Aviso de sobreconsumo integrado (reutiliza lógica existente)
+// ==========================================================
+@Composable
+fun ResumenCard(
+    periodLabelRes: Int,
+    totalSpent: Long,
+    comparison: SpendingComparison?,
+    costPerKm: Double?,
+    fuelStats: FuelStats?
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Gasto del periodo — métrica principal
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(periodLabelRes),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    formatMoneyCentsWithCode(totalSpent),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (comparison != null) {
+                    val formattedPercentage = String.format(java.util.Locale.US, "%.1f", comparison.percentage)
+                    val periodName = stringResource(comparison.labelPeriodRes)
+                    val comparisonText = if (comparison.isIncrease) {
+                        stringResource(R.string.dashboard_spending_increase, formattedPercentage, periodName)
+                    } else {
+                        stringResource(R.string.dashboard_spending_decrease, formattedPercentage, periodName)
+                    }
+                    val comparisonColor = if (comparison.isIncrease) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.tertiary
+                    }
+
+                    Text(
+                        text = comparisonText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = comparisonColor
+                    )
+                }
+            }
+
+            HorizontalDivider()
+
+            // Métricas secundarias: costo por km + rendimiento
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        stringResource(R.string.dashboard_cost_per_km),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        costPerKm?.let { formatCostPerDistance(it) } ?: "—",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        stringResource(R.string.dashboard_performance),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        fuelStats?.avgKmL?.let { formatEfficiency(it) } ?: "—",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Hint cuando no hay datos de rendimiento (sin inventar valores)
+            if (fuelStats?.avgKmL == null) {
+                fuelStats?.hintResId?.let { hintRes ->
+                    Text(
+                        stringResource(hintRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Aviso de sobreconsumo (reutiliza lógica existente)
+            if (fuelStats?.isOverconsuming == true && fuelStats.latestKmL != null && fuelStats.avgKmL != null) {
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            stringResource(R.string.fuel_overconsumption_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            stringResource(
+                                R.string.fuel_overconsumption_desc,
+                                formatEfficiency(fuelStats.latestKmL),
+                                fuelStats.consumptionDropPercent,
+                                formatEfficiency(fuelStats.avgKmL)
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================================
+// Estado del vehículo:
+// - Estado global (derivado del conjunto de schedules existentes)
+// - Top 2 mantenimientos usando datos reales de `schedules`
+// - No inventa elementos (aceite, llantas, etc.): solo lo que exista
+// ==========================================================
+@Composable
+fun VehicleStatusSection(
+    schedules: List<EvaluatedSchedule>,
+    onViewAll: () -> Unit,
+    onScheduleClick: (EvaluatedSchedule) -> Unit
+) {
+    if (schedules.isEmpty()) return
+
+    val overallUrgency = when {
+        schedules.any { it.urgency == Urgency.OVERDUE } -> Urgency.OVERDUE
+        schedules.any { it.urgency == Urgency.SOON } -> Urgency.SOON
+        schedules.all { it.urgency == Urgency.OK } -> Urgency.OK
+        else -> Urgency.UNKNOWN
+    }
+
+    val containerColor = when (overallUrgency) {
+        Urgency.OVERDUE -> MaterialTheme.colorScheme.errorContainer
+        Urgency.SOON -> MaterialTheme.colorScheme.tertiaryContainer
+        Urgency.OK -> MaterialTheme.colorScheme.primaryContainer
+        Urgency.UNKNOWN -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val contentColor = when (overallUrgency) {
+        Urgency.OVERDUE -> MaterialTheme.colorScheme.onErrorContainer
+        Urgency.SOON -> MaterialTheme.colorScheme.onTertiaryContainer
+        Urgency.OK -> MaterialTheme.colorScheme.onPrimaryContainer
+        Urgency.UNKNOWN -> MaterialTheme.colorScheme.onSurface
+    }
+    val statusIcon = when (overallUrgency) {
+        Urgency.OVERDUE -> Icons.Default.Warning
+        Urgency.SOON -> Icons.Default.Info
+        Urgency.OK -> Icons.Default.CheckCircle
+        Urgency.UNKNOWN -> Icons.Outlined.HelpOutline
+    }
+    val statusText = when (overallUrgency) {
+        Urgency.OVERDUE -> stringResource(R.string.cd_maint_overdue)
+        Urgency.SOON -> stringResource(R.string.cd_maint_soon)
+        Urgency.OK -> stringResource(R.string.dashboard_vehicle_status_ok)
+        Urgency.UNKNOWN -> stringResource(R.string.cd_maint_unknown)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHeader(
+            title = stringResource(R.string.dashboard_vehicle_status),
+            actionLabel = if (schedules.size > 1) stringResource(R.string.dashboard_view_all) else null,
+            onActionClick = onViewAll
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(statusIcon, contentDescription = null, tint = contentColor, modifier = Modifier.size(24.dp))
+                Text(
+                    statusText,
+                    color = contentColor,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall
+                )
+            }
+        }
+
+        schedules.take(2).forEach { schedule ->
+            MaintenanceCard(schedule, onClick = { onScheduleClick(schedule) })
+        }
+    }
+}
+
+// ==========================================================
+// Costo acumulado — información secundaria
+// Se reduce su protagonismo usando elevación 1 y tipografía menor.
+// ==========================================================
+@Composable
+fun TotalCostCard(
+    purchasePriceCents: Long,
+    allTimeSpent: Long
+) {
+    val totalCost = calculateTotalCost(purchasePriceCents, allTimeSpent)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBubble(Icons.Default.Savings, size = 32.dp)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        stringResource(R.string.dashboard_total_cost),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        stringResource(R.string.dashboard_purchase_price, formatMoneyCents(purchasePriceCents)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Text(
+                formatMoneyCents(totalCost),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.core.ui.components.showUndoSnackbar
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
@@ -245,9 +246,9 @@ fun GoalsScreen(
                                 style = MaterialTheme.typography.labelLarge
                             )
                             if (totals.minTotal == totals.maxTotal) {
-                                Text(formatMoneyCents(totals.minTotal), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text(formatMoneyCentsWithCode(totals.minTotal), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                             } else {
-                                Text(stringResource(R.string.goals_range, formatMoneyCents(totals.minTotal), formatMoneyCents(totals.maxTotal)), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.goals_range, formatMoneyCentsWithCode(totals.minTotal), formatMoneyCentsWithCode(totals.maxTotal)), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             }
 
                             if (totals.totalSaved > 0L) {

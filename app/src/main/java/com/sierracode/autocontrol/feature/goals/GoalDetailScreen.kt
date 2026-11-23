@@ -25,6 +25,7 @@ import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
 import com.sierracode.autocontrol.core.ui.LocalAppConfig
 import com.sierracode.autocontrol.core.ui.components.CurrencyField
 import com.sierracode.autocontrol.domain.calc.goalProgress
@@ -153,11 +154,11 @@ fun GoalDetailScreen(
                             Text(stringResource(R.string.goals_estimated_cost), style = MaterialTheme.typography.labelLarge)
                             if (goal.estimatedMaxCents != null) {
                                 Text(
-                                    stringResource(R.string.goals_range, formatMoneyCents(goal.estimatedCents), formatMoneyCents(goal.estimatedMaxCents)),
+                                    stringResource(R.string.goals_range, formatMoneyCentsWithCode(goal.estimatedCents), formatMoneyCentsWithCode(goal.estimatedMaxCents)),
                                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold
                                 )
                             } else {
-                                Text(formatMoneyCents(goal.estimatedCents), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text(formatMoneyCentsWithCode(goal.estimatedCents), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             }
 
                             val est = if (goal.estimatedMaxCents != null && goal.estimatedMaxCents != goal.estimatedCents) {

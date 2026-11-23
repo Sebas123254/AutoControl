@@ -30,6 +30,7 @@ import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
 import com.sierracode.autocontrol.core.format.formatVolume
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.components.FullScreenImageDialog
@@ -248,7 +249,7 @@ fun ExpenseDetailScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = formatMoneyCents(expense.amountCents),
+                        text = formatMoneyCentsWithCode(expense.amountCents),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary

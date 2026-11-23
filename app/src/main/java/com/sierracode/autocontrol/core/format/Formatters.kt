@@ -10,28 +10,15 @@ import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.util.Currency
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToLong
 
-// Los formateadores se crean una sola vez por idioma y divisa, no en cada composición.
-private val moneyFormats = ConcurrentHashMap<String, NumberFormat>()
 private val numberFormats = ConcurrentHashMap<String, NumberFormat>()
 
 /** Idioma actual leído de forma observable: si el usuario cambia el idioma, la pantalla se recompone. */
 @Composable
 private fun currentLocale(): Locale = LocalConfiguration.current.locales[0]
-
-private fun moneyFormat(locale: Locale, currency: Currency): NumberFormat =
-    moneyFormats.getOrPut("${locale.toLanguageTag()}|${currency.currencyCode}") {
-        NumberFormat.getCurrencyInstance(locale).apply {
-            this.currency = currency
-            val digits = currency.defaultFractionDigits.coerceAtLeast(0)
-            minimumFractionDigits = digits
-            maximumFractionDigits = digits
-        }
-    }
 
 private fun decimalFormat(locale: Locale): NumberFormat =
     numberFormats.getOrPut("${locale.toLanguageTag()}|dec2") {
@@ -50,15 +37,14 @@ private fun NumberFormat.safeFormat(value: Long): String = synchronized(this) { 
 @Composable
 fun formatMoneyCents(cents: Long?): String {
     if (cents == null) return "—"
+    return MoneyFormatter.format(cents)
+}
+
+@Composable
+fun formatMoneyCentsWithCode(cents: Long?): String {
+    if (cents == null) return "—"
     val config = LocalAppConfig.current
-    val locale = currentLocale()
-    val currency = try {
-        Currency.getInstance(config.currencyCode)
-    } catch (_: Exception) {
-        Currency.getInstance("MXN")
-    }
-    val suffix = if (config.currencyCode == "MXN" && locale.language != "en") " ${config.currencyCode}" else ""
-    return "${moneyFormat(locale, currency).safeFormat(cents / 100.0)}$suffix"
+    return MoneyFormatter.formatWithCode(cents, config.currencyCode)
 }
 
 @Composable
@@ -106,8 +92,8 @@ fun formatCostPerDistance(costPerKmCents: Double?): String {
     } else {
         UnitConverter.costPerKmToCostPerMile(costPerKmCents) / 100.0
     }
-    val suffix = if (config.unitSystem == UnitSystem.METRIC) "/km" else "/mi"
-    return formatMoneyCents((costPerUnit * 100).roundToLong()) + suffix
+    val unit = if (config.unitSystem == UnitSystem.METRIC) "km" else "mi"
+    return MoneyFormatter.formatPerDistance((costPerUnit * 100).roundToLong(), unit)
 }
 
 fun formatDate(epochDay: Long?): String {
