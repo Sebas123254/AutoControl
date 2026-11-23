@@ -62,6 +62,7 @@ class GoalEditViewModel @Inject constructor(
     val title: StateFlow<String> = savedStateHandle.getStateFlow("title", "")
     val amount: StateFlow<String> = savedStateHandle.getStateFlow("amount", "")
     val maxAmount: StateFlow<String> = savedStateHandle.getStateFlow("maxAmount", "")
+    val savedAmount: StateFlow<String> = savedStateHandle.getStateFlow("savedAmount", "")
     val priority: StateFlow<String> = savedStateHandle.getStateFlow("priority", "MEDIA")
     val notes: StateFlow<String> = savedStateHandle.getStateFlow("notes", "")
     val hasUnsavedChanges: StateFlow<Boolean> = savedStateHandle.getStateFlow("hasUnsavedChanges", false)
@@ -88,6 +89,7 @@ class GoalEditViewModel @Inject constructor(
                     savedStateHandle["title"] = goal.title
                     savedStateHandle["amount"] = (goal.estimatedCents / 100.0).toString()
                     savedStateHandle["maxAmount"] = goal.estimatedMaxCents?.let { (it / 100.0).toString() } ?: ""
+                    savedStateHandle["savedAmount"] = if (goal.savedCents > 0) (goal.savedCents / 100.0).toString() else ""
                     savedStateHandle["priority"] = goal.priority
                     savedStateHandle["targetDateEpochDay"] = goal.targetDateEpochDay
                     savedStateHandle["notes"] = goal.notes ?: ""
@@ -101,6 +103,7 @@ class GoalEditViewModel @Inject constructor(
     fun updateTitle(v: String) { savedStateHandle["title"] = v; markDirty(); error = null }
     fun updateAmount(v: String) { savedStateHandle["amount"] = v; markDirty(); error = null }
     fun updateMaxAmount(v: String) { savedStateHandle["maxAmount"] = v; markDirty(); error = null }
+    fun updateSavedAmount(v: String) { savedStateHandle["savedAmount"] = v; markDirty(); error = null }
     fun updatePriority(v: String) { savedStateHandle["priority"] = v; markDirty() }
     fun updateTargetDate(d: LocalDate?) { savedStateHandle["targetDateEpochDay"] = d?.toEpochDay(); markDirty() }
     fun updateCategory(cat: CategoryEntity) { savedStateHandle["categoryId"] = cat.id; markDirty() }
@@ -111,11 +114,12 @@ class GoalEditViewModel @Inject constructor(
         val currentTitle = title.value
         val est = amount.value.toBigDecimalOrNull()?.movePointRight(2)?.toLong() ?: 0L
         val max = maxAmount.value.toBigDecimalOrNull()?.movePointRight(2)?.toLong()
+        val saved = savedAmount.value.toBigDecimalOrNull()?.movePointRight(2)?.toLong() ?: 0L
 
         if (currentTitle.isBlank() || est <= 0) {
             error = context.getString(R.string.goal_err_valid); return
         }
-        if (est < 0 || (max != null && max < 0)) {
+        if (est < 0 || (max != null && max < 0) || saved < 0) {
             error = context.getString(R.string.goal_err_negative); return
         }
         if (max != null && max < est) {
@@ -137,6 +141,7 @@ class GoalEditViewModel @Inject constructor(
                     title = currentTitle,
                     estimatedCents = est,
                     estimatedMaxCents = max,
+                    savedCents = saved,
                     priority = currentPriority,
                     targetDateEpochDay = currentTargetDate?.toEpochDay(),
                     status = existing?.status ?: "PENDIENTE",
@@ -169,6 +174,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
     val title by vm.title.collectAsStateWithLifecycle()
     val amount by vm.amount.collectAsStateWithLifecycle()
     val maxAmount by vm.maxAmount.collectAsStateWithLifecycle()
+    val savedAmount by vm.savedAmount.collectAsStateWithLifecycle()
     val priority by vm.priority.collectAsStateWithLifecycle()
     val notes by vm.notes.collectAsStateWithLifecycle()
     val targetDate by vm.targetDate.collectAsStateWithLifecycle()
@@ -242,6 +248,14 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                 value = maxAmount,
                 onValueChange = { vm.updateMaxAmount(it) },
                 label = stringResource(R.string.goals_field_max),
+                currencyCode = config.currencyCode,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            CurrencyField(
+                value = savedAmount,
+                onValueChange = { vm.updateSavedAmount(it) },
+                label = stringResource(R.string.goals_saved_amount),
                 currencyCode = config.currencyCode,
                 modifier = Modifier.fillMaxWidth()
             )

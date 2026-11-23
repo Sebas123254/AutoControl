@@ -2,14 +2,20 @@ package com.sierracode.autocontrol.domain.calc
 
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
 
-data class GoalCalcData(val estimatedCents: Long, val estimatedMaxCents: Long?)
-data class GoalTotals(val minTotal: Long, val maxTotal: Long)
+data class GoalCalcData(val estimatedCents: Long, val estimatedMaxCents: Long?, val savedCents: Long = 0L)
+data class GoalTotals(val minTotal: Long, val maxTotal: Long, val totalSaved: Long = 0L)
 
 fun calculatePendingTotals(pendingGoals: List<GoalCalcData>): GoalTotals? {
     if (pendingGoals.isEmpty()) return null
     val min = pendingGoals.sumOf { it.estimatedCents }
     val max = pendingGoals.sumOf { it.estimatedMaxCents ?: it.estimatedCents }
-    return GoalTotals(min, max)
+    val saved = pendingGoals.sumOf { it.savedCents }
+    return GoalTotals(min, max, saved)
+}
+
+fun goalProgress(savedCents: Long, targetCents: Long): Float {
+    if (targetCents <= 0L) return 0f
+    return (savedCents.toFloat() / targetCents.toFloat()).coerceIn(0f, 1f)
 }
 
 // --- NUEVA LÓGICA DE FILTRO Y ORDEN ---

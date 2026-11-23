@@ -402,6 +402,14 @@
     <string name="goals_buy_action">Register Purchase &amp; Expense</string>
     <string name="goals_diff_over">You spent %1$s more than estimated</string>
     <string name="goals_diff_saved">You saved %1$s!</string>
+    <string name="goals_saved">Saved %1$s of %2$s (%3$d%%)</string>
+    <string name="goals_saved_amount">Current saved amount</string>
+    <string name="goals_add_saving">Add savings</string>
+    <string name="goals_add_saving_title">Log savings</string>
+    <string name="goals_add_saving_desc">Enter the amount you want to contribute to this goal:</string>
+    <string name="goals_total_saved_label">Saved: %1$s (%2$d%%)</string>
+    <string name="fuel_overconsumption_title">Higher consumption detected</string>
+    <string name="fuel_overconsumption_desc">Your last fill-up yielded %1$s, %2$d%% lower than your average of %3$s. Check tire pressure, filters, or driving conditions.</string>
     <string name="goals_filter_count">%1$s (%2$d)</string>
     <string name="goal_deleted">Goal \"%1$s\" deleted</string>
     <string name="reminder_deleted">Reminder deleted</string>

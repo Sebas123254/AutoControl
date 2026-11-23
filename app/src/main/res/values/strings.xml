@@ -402,6 +402,14 @@
     <string name="goals_buy_action">Registrar Compra y Gasto</string>
     <string name="goals_diff_over">Gastaste %1$s más de lo estimado</string>
     <string name="goals_diff_saved">¡Ahorraste %1$s!</string>
+    <string name="goals_saved">Ahorrado %1$s de %2$s (%3$d%%)</string>
+    <string name="goals_saved_amount">Monto ahorrado actual</string>
+    <string name="goals_add_saving">Abonar ahorro</string>
+    <string name="goals_add_saving_title">Registrar ahorro</string>
+    <string name="goals_add_saving_desc">Ingresa el monto que deseas abonar a este objetivo:</string>
+    <string name="goals_total_saved_label">Ahorrado: %1$s (%2$d%%)</string>
+    <string name="fuel_overconsumption_title">Consumo elevado detectado</string>
+    <string name="fuel_overconsumption_desc">Tu última carga rindió %1$s, un %2$d%% menos que tu promedio de %3$s. Revisa la presión de llantas, filtros o condiciones de manejo.</string>
     <string name="goal_deleted">Objetivo \"%1$s\" eliminado</string>
     <string name="reminder_deleted">Recordatorio eliminado</string>
     <string name="goals_filter_count">%1$s (%2$d)</string>

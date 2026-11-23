@@ -5,7 +5,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +25,9 @@ import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatDate
 import com.sierracode.autocontrol.core.format.formatMoneyCents
+import com.sierracode.autocontrol.core.ui.LocalAppConfig
+import com.sierracode.autocontrol.core.ui.components.CurrencyField
+import com.sierracode.autocontrol.domain.calc.goalProgress
 import com.sierracode.autocontrol.data.local.entity.CategoryEntity
 import com.sierracode.autocontrol.data.local.entity.ExpenseEntity
 import com.sierracode.autocontrol.data.local.entity.GoalEntity
@@ -63,6 +69,15 @@ class GoalDetailViewModel @Inject constructor(
             goalFlow.value = goalRepo.get(goalId)
         }
     }
+
+    fun addSavings(amountCents: Long) {
+        viewModelScope.launch {
+            val current = goalFlow.value ?: return@launch
+            val updated = current.copy(savedCents = (current.savedCents + amountCents).coerceAtLeast(0L))
+            goalRepo.save(updated)
+            goalFlow.value = updated
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,6 +89,8 @@ fun GoalDetailScreen(
     vm: GoalDetailViewModel = hiltViewModel()
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val config = LocalAppConfig.current
+    var showAddSavingDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -142,6 +159,30 @@ fun GoalDetailScreen(
                             } else {
                                 Text(formatMoneyCents(goal.estimatedCents), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             }
+
+                            val est = if (goal.estimatedMaxCents != null && goal.estimatedMaxCents != goal.estimatedCents) {
+                                stringResource(R.string.goals_range, formatMoneyCents(goal.estimatedCents), formatMoneyCents(goal.estimatedMaxCents))
+                            } else formatMoneyCents(goal.estimatedCents)
+                            val progress = goalProgress(goal.savedCents, goal.estimatedCents)
+                            val percent = (progress * 100).toInt()
+
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                stringResource(R.string.goals_saved, formatMoneyCents(goal.savedCents), est, percent),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(10.dp)
+                                    .clip(RoundedCornerShape(5.dp)),
+                                color = if (progress >= 1f) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         } else {
                             Text(stringResource(R.string.goals_status_completed), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                             Text(stringResource(R.string.goals_estimated_cost), style = MaterialTheme.typography.labelMedium)
@@ -175,16 +216,72 @@ fun GoalDetailScreen(
                 Spacer(Modifier.weight(1f))
 
                 if (goal.status == "PENDIENTE") {
-                    Button(
-                        onClick = onBuyClick,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.ShoppingCart, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.goals_buy_action), style = MaterialTheme.typography.titleMedium)
+                        OutlinedButton(
+                            onClick = { showAddSavingDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                        ) {
+                            Icon(Icons.Default.Savings, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.goals_add_saving))
+                        }
+
+                        Button(
+                            onClick = onBuyClick,
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.ShoppingCart, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.goals_buy_action), style = MaterialTheme.typography.titleSmall)
+                        }
                     }
                 }
+            }
+
+            if (showAddSavingDialog) {
+                var savingInput by remember { mutableStateOf("") }
+                AlertDialog(
+                    onDismissRequest = { showAddSavingDialog = false },
+                    title = { Text(stringResource(R.string.goals_add_saving_title)) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(stringResource(R.string.goals_add_saving_desc))
+                            CurrencyField(
+                                value = savingInput,
+                                onValueChange = { savingInput = it },
+                                label = stringResource(R.string.goals_add_saving),
+                                currencyCode = config.currencyCode,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val cents = savingInput.toBigDecimalOrNull()?.movePointRight(2)?.toLong() ?: 0L
+                                if (cents > 0L) {
+                                    vm.addSavings(cents)
+                                }
+                                showAddSavingDialog = false
+                            }
+                        ) {
+                            Text(stringResource(R.string.action_ok))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddSavingDialog = false }) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                    }
+                )
             }
         }
     }

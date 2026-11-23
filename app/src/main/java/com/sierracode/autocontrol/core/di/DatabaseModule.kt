@@ -11,6 +11,7 @@ import com.sierracode.autocontrol.data.local.MIGRATION_5_6
 import com.sierracode.autocontrol.data.local.MIGRATION_6_7
 import com.sierracode.autocontrol.data.local.MIGRATION_7_8
 import com.sierracode.autocontrol.data.local.MIGRATION_8_9
+import com.sierracode.autocontrol.data.local.MIGRATION_9_10
 import com.sierracode.autocontrol.data.local.seed.CategorySeed
 import dagger.Module
 import dagger.Provides
@@ -40,7 +41,8 @@ object DatabaseModule {
                 MIGRATION_5_6,
                 MIGRATION_6_7,
                 MIGRATION_7_8,
-                MIGRATION_8_9
+                MIGRATION_8_9,
+                MIGRATION_9_10
             )
             .build()
 

@@ -9,8 +9,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.sierracode.autocontrol.core.ui.theme.AutoControlTheme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 /**
- * Tarjeta de métrica. Extraída de DashboardScreen para reutilizarla en Stats.
+ * Tarjeta de métrica con estética idéntica al Onboarding.
  * `subtitle` reemplaza el Text explicativo que hoy se coloca debajo de la card.
  * `onClick` permite drill-down (Stats → Gastos filtrados).
  */
@@ -23,20 +25,22 @@ fun MetricCard(
     onClick: (() -> Unit)? = null
 ) {
     val content: @Composable () -> Unit = {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(8.dp))
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
             )
             if (subtitle != null) {
-                Spacer(Modifier.height(4.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -46,10 +50,25 @@ fun MetricCard(
         }
     }
 
+    val cardShape = RoundedCornerShape(24.dp)
+    val cardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+    val cardElevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+
     if (onClick != null) {
-        Card(onClick = onClick, modifier = modifier) { content() }
+        Card(
+            onClick = onClick,
+            modifier = modifier,
+            shape = cardShape,
+            colors = cardColors,
+            elevation = cardElevation
+        ) { content() }
     } else {
-        Card(modifier = modifier) { content() }
+        Card(
+            modifier = modifier,
+            shape = cardShape,
+            colors = cardColors,
+            elevation = cardElevation
+        ) { content() }
     }
 }
 

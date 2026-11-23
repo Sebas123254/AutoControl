@@ -23,12 +23,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.formatCostPerDistance
 import com.sierracode.autocontrol.core.format.formatEfficiency
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
+import com.sierracode.autocontrol.core.ui.components.IconBubble
 import com.sierracode.autocontrol.core.ui.components.StatusChip
 import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
 import com.sierracode.autocontrol.data.repository.*
@@ -59,7 +62,10 @@ data class EvaluatedSchedule(
 
 data class FuelStats(
     val avgKmL: Double?,
-    val hintResId: Int?
+    val hintResId: Int?,
+    val latestKmL: Double? = null,
+    val isOverconsuming: Boolean = false,
+    val consumptionDropPercent: Int = 0
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -168,7 +174,13 @@ class DashboardViewModel @Inject constructor(
                 summary.avgKmPerLiter == null -> R.string.dashboard_maint_consecutive_hint
                 else -> null
             }
-            FuelStats(summary.avgKmPerLiter, hintResId)
+            FuelStats(
+                avgKmL = summary.avgKmPerLiter,
+                hintResId = hintResId,
+                latestKmL = summary.latestKmPerLiter,
+                isOverconsuming = summary.isOverconsuming,
+                consumptionDropPercent = summary.consumptionDropPercent
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -449,17 +461,24 @@ fun DashboardScreen(
             ) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.DirectionsCar, contentDescription = null, modifier = Modifier.size(40.dp))
+                    Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(icon = Icons.Default.DirectionsCar, size = 48.dp)
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("${v.brand} ${v.model}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Text("${formatKm(v.odometer)} • ${v.plates ?: stringResource(R.string.vehicles_no_plates)}", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "${formatKm(v.odometer)} • ${v.plates ?: stringResource(R.string.vehicles_no_plates)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         IconButton(onClick = onEditVehicle) {
-                            Icon(Icons.Default.Edit, contentDescription = cdEditVehicle, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Edit, contentDescription = cdEditVehicle, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -538,24 +557,41 @@ fun DashboardScreen(
 
                 if (v.purchasePriceCents != null) {
                     val totalCost = calculateTotalCost(v.purchasePriceCents, allTimeSpent)
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Bottom
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(stringResource(R.string.dashboard_total_cost), style = MaterialTheme.typography.labelMedium)
-                                Text(
-                                    stringResource(R.string.dashboard_purchase_price, formatMoneyCents(v.purchasePriceCents)),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconBubble(Icons.Default.Savings, size = 40.dp)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            stringResource(R.string.dashboard_total_cost),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            stringResource(R.string.dashboard_purchase_price, formatMoneyCents(v.purchasePriceCents)),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
-                            Spacer(Modifier.height(8.dp))
                             Text(
                                 formatMoneyCents(totalCost),
-                                style = MaterialTheme.typography.headlineSmall,
+                                style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -563,6 +599,7 @@ fun DashboardScreen(
                     }
                 } else {
                     EmptyStateCard(
+                        icon = Icons.Default.Savings,
                         title = stringResource(R.string.dashboard_price_missing),
                         description = stringResource(R.string.dashboard_price_desc),
                         actionLabel = stringResource(R.string.dashboard_add_price),
@@ -574,15 +611,68 @@ fun DashboardScreen(
                 if (fuelStats?.avgKmL != null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(formatEfficiency(fuelStats!!.avgKmL), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                            Text(stringResource(R.string.dashboard_performance_avg), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconBubble(icon = Icons.Default.LocalGasStation, size = 48.dp)
+                                Spacer(Modifier.width(16.dp))
+                                Column {
+                                    Text(
+                                        stringResource(R.string.dashboard_performance_avg),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        formatEfficiency(fuelStats!!.avgKmL),
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            if (fuelStats!!.isOverconsuming && fuelStats!!.latestKmL != null) {
+                                HorizontalDivider()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            stringResource(R.string.fuel_overconsumption_title),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            stringResource(
+                                                R.string.fuel_overconsumption_desc,
+                                                formatEfficiency(fuelStats!!.latestKmL),
+                                                fuelStats!!.consumptionDropPercent,
+                                                formatEfficiency(fuelStats!!.avgKmL)
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
                     EmptyStateCard(
+                        icon = Icons.Default.LocalGasStation,
                         title = stringResource(R.string.dashboard_no_data),
                         description = fuelStats?.hintResId?.let { stringResource(it) } ?: stringResource(R.string.dashboard_maint_full_hint),
                         actionLabel = stringResource(R.string.dashboard_register_fuel),
@@ -598,7 +688,12 @@ fun DashboardScreen(
 
 @Composable
 fun QuickActionButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FilledTonalButton(onClick = onClick, modifier = modifier.height(64.dp), contentPadding = PaddingValues(0.dp)) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier.height(68.dp),
+        shape = RoundedCornerShape(18.dp),
+        contentPadding = PaddingValues(0.dp)
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
             Spacer(Modifier.height(4.dp))
@@ -622,13 +717,28 @@ fun MetricCard(
     modifier: Modifier = Modifier,
     subtitle: String? = null
 ) {
-    Card(modifier = modifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
             if (subtitle != null) {
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -644,12 +754,22 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
     val containerColor = when (schedule.urgency) {
         Urgency.OVERDUE -> MaterialTheme.colorScheme.errorContainer
         Urgency.SOON -> MaterialTheme.colorScheme.tertiaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val contentColor = when (schedule.urgency) {
         Urgency.OVERDUE -> MaterialTheme.colorScheme.onErrorContainer
         Urgency.SOON -> MaterialTheme.colorScheme.onTertiaryContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val bubbleContainer = when (schedule.urgency) {
+        Urgency.OVERDUE -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
+        Urgency.SOON -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val bubbleTint = when (schedule.urgency) {
+        Urgency.OVERDUE -> MaterialTheme.colorScheme.error
+        Urgency.SOON -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
     val statusText = when (schedule.urgency) {
         Urgency.OVERDUE -> stringResource(R.string.cd_maint_overdue)
@@ -666,40 +786,81 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = containerColor)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(schedule.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_vehicle), modifier = Modifier.size(16.dp), tint = contentColor)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconBubble(
+                        icon = Icons.Default.Build,
+                        size = 40.dp,
+                        containerColor = bubbleContainer,
+                        contentColor = bubbleTint
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                schedule.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = contentColor
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = stringResource(R.string.cd_edit_vehicle),
+                                modifier = Modifier.size(16.dp),
+                                tint = contentColor.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
                 }
                 StatusChip(
                     text = statusText,
                     icon = statusIcon,
-                    containerColor = contentColor.copy(alpha = 0.1f),
+                    containerColor = contentColor.copy(alpha = 0.12f),
                     contentColor = contentColor
                 )
             }
-            Spacer(Modifier.height(8.dp))
             if (schedule.targetOdometer != null && schedule.remainingKm != null) {
-                LinearProgressIndicator(
-                    progress = { schedule.progress },
-                    modifier = Modifier.fillMaxWidth().height(8.dp),
-                    color = contentColor,
-                    trackColor = contentColor.copy(alpha = 0.2f)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.dashboard_maint_card_faltan, formatKm(schedule.remainingKm), formatKm(schedule.targetOdometer)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor
-                )
+                val progressColor = when (schedule.urgency) {
+                    Urgency.OVERDUE -> MaterialTheme.colorScheme.error
+                    Urgency.SOON -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.primary
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LinearProgressIndicator(
+                        progress = { schedule.progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(CircleShape),
+                        color = progressColor,
+                        trackColor = contentColor.copy(alpha = 0.15f)
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.dashboard_maint_card_faltan,
+                            formatKm(schedule.remainingKm),
+                            formatKm(schedule.targetOdometer)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor.copy(alpha = 0.85f)
+                    )
+                }
             }
         }
     }

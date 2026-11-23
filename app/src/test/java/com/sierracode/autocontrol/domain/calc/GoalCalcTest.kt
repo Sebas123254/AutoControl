@@ -48,4 +48,23 @@ class GoalCalcTest {
         // Montos: g2 (500), g3 (300), g1 (100), g4 (100). g1 y g4 empatan en 100, pero g1 es ALTA y g4 es ALTA, desempatan por fecha (g1 100, g4 null) -> g1 luego g4.
         assertEquals(listOf("2", "3", "1", "4"), result.map { it.id })
     }
+
+    @Test
+    fun `goalProgress calcula correctamente el porcentaje acotado entre 0 y 1`() {
+        assertEquals(0.4f, goalProgress(480000L, 1200000L), 0.001f) // 4,800 de 12,000 = 40%
+        assertEquals(0.0f, goalProgress(0L, 1000L), 0.001f)
+        assertEquals(1.0f, goalProgress(2000L, 1000L), 0.001f)
+    }
+
+    @Test
+    fun `calculatePendingTotals suma montos estimados y acumulado de ahorros`() {
+        val items = listOf(
+            GoalCalcData(estimatedCents = 10000L, estimatedMaxCents = 15000L, savedCents = 4000L),
+            GoalCalcData(estimatedCents = 20000L, estimatedMaxCents = 20000L, savedCents = 6000L)
+        )
+        val totals = calculatePendingTotals(items)!!
+        assertEquals(30000L, totals.minTotal)
+        assertEquals(35000L, totals.maxTotal)
+        assertEquals(10000L, totals.totalSaved)
+    }
 }

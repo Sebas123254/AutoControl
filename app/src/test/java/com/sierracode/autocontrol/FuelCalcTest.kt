@@ -95,4 +95,18 @@ class FuelCalcTest {
         )
         assertEquals(8000L, summarizeFuel(pts, today).last12MonthsSpentCents)
     }
+
+    @Test
+    fun `detecta sobreconsumo cuando el ultimo rendimiento cae mas del 15 por ciento`() {
+        val pts = listOf(
+            pt(1000, 40.0, true, 1),
+            pt(1500, 40.0, true, 5),  // 500 km / 40 L = 12.5 km/L
+            pt(2000, 40.0, true, 10), // 500 km / 40 L = 12.5 km/L
+            pt(2360, 40.0, true, 15)  // 360 km / 40 L = 9.0 km/L (caída de 21% sobre el promedio global)
+        )
+        val summary = summarizeFuel(pts)
+        assertTrue(summary.isOverconsuming)
+        assertTrue(summary.consumptionDropPercent > 15)
+        assertEquals(9.0, summary.latestKmPerLiter!!, 0.001)
+    }
 }

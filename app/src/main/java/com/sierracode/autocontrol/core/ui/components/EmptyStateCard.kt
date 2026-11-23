@@ -14,8 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import com.sierracode.autocontrol.core.ui.theme.AutoControlTheme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 /**
- * Estado vacío unificado.
+ * Estado vacío unificado con diseño consistente al Onboarding.
  *
  * Sustituye al antiguo `EmptyState` y a `EmptyStateCard`:
  * - Si `actionLabel`/`onActionClick` son no nulos, aparece un FilledTonalButton
@@ -34,20 +36,22 @@ fun EmptyStateCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            modifier = Modifier.padding(20.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                IconBubble(
+                    icon = icon,
+                    size = 48.dp,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
             }
             Text(
                 text = title,
@@ -64,7 +68,10 @@ fun EmptyStateCard(
             )
             if (actionLabel != null && onActionClick != null) {
                 Spacer(Modifier.height(16.dp))
-                FilledTonalButton(onClick = onActionClick) {
+                FilledTonalButton(
+                    onClick = onActionClick,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
                     Text(actionLabel)
                 }
             }

@@ -12,6 +12,8 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -90,8 +92,8 @@ class GoalsViewModel @Inject constructor(
         }
 
         val allPending = validGoals.filter { it.status == "PENDIENTE" }
-        val generalTotals = calculatePendingTotals(allPending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) })
-        val filteredTotals = calculatePendingTotals(pending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents) })
+        val generalTotals = calculatePendingTotals(allPending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents, it.savedCents) })
+        val filteredTotals = calculatePendingTotals(pending.map { GoalCalcData(it.estimatedCents, it.estimatedMaxCents, it.savedCents) })
 
         GoalsUiState(
             pendingGoals = pending,
@@ -248,6 +250,24 @@ fun GoalsScreen(
                                 Text(stringResource(R.string.goals_range, formatMoneyCents(totals.minTotal), formatMoneyCents(totals.maxTotal)), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             }
 
+                            if (totals.totalSaved > 0L) {
+                                val overallProgress = if (totals.minTotal > 0L) (totals.totalSaved.toFloat() / totals.minTotal.toFloat()).coerceIn(0f, 1f) else 0f
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = stringResource(R.string.goals_total_saved_label, formatMoneyCents(totals.totalSaved), (overallProgress * 100).toInt()),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { overallProgress },
+                                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
+                                )
+                            }
+
                             if (activeFilter != GoalFilter.ALL && state.generalTotal != null) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
@@ -328,7 +348,29 @@ fun GoalListCard(goal: GoalEntity, onClick: () -> Unit, onDelete: () -> Unit) {
                     val est = if (goal.estimatedMaxCents != null && goal.estimatedMaxCents != goal.estimatedCents) {
                         stringResource(R.string.goals_range, formatMoneyCents(goal.estimatedCents), formatMoneyCents(goal.estimatedMaxCents))
                     } else formatMoneyCents(goal.estimatedCents)
-                    Text(stringResource(R.string.goals_est, est), style = MaterialTheme.typography.bodyMedium)
+
+                    if (goal.status == "PENDIENTE") {
+                        val progress = goalProgress(goal.savedCents, goal.estimatedCents)
+                        val percent = (progress * 100).toInt()
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            stringResource(R.string.goals_saved, formatMoneyCents(goal.savedCents), est, percent),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = if (progress >= 1f) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    } else {
+                        Text(stringResource(R.string.goals_est, est), style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }

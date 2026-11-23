@@ -160,6 +160,7 @@ data class GoalDto(
     val targetDateEpochDay: Long?,
     val status: String,
     val categoryId: String?,
+    val savedCents: Long = 0L,
     val createdAt: Long,
     val completedAt: Long?,
     val linkedExpenseId: String?

@@ -188,6 +188,7 @@ data class GoalEntity(
     val targetDateEpochDay: Long? = null,
     val status: String = "PENDIENTE",
     val categoryId: String? = null,
+    val savedCents: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null,
     val linkedExpenseId: String? = null

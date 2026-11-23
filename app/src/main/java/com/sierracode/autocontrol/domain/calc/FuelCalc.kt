@@ -69,13 +69,42 @@ fun averageFullTankConsumption(points: List<FuelPoint>): Double? {
     return if (totalKm > 0L && totalLiters > 0.0) totalKm / totalLiters else null
 }
 
+fun fullTankIntervalConsumptions(points: List<FuelPoint>): List<Double> {
+    val sorted = points.sortedWith(
+        compareBy<FuelPoint>({ it.epochDay }, { it.odometer ?: Long.MAX_VALUE })
+    )
+    val intervals = mutableListOf<Double>()
+    var anchorOdo: Long? = null
+    var litersSinceAnchor = 0.0
+
+    for (p in sorted) {
+        if (anchorOdo != null) litersSinceAnchor += p.liters
+        val odo = p.odometer
+        if (p.fullTank && odo != null) {
+            val prev = anchorOdo
+            if (prev != null) {
+                val km = odo - prev
+                if (km > 0L && litersSinceAnchor > 0.0) {
+                    intervals.add(km.toDouble() / litersSinceAnchor)
+                }
+            }
+            anchorOdo = odo
+            litersSinceAnchor = 0.0
+        }
+    }
+    return intervals
+}
+
 data class FuelSummary(
     val avgKmPerLiter: Double?,
     val avgPricePerLiterCents: Double?,
     val totalLiters: Double,
     val totalSpentCents: Long,
     val monthlyAvgSpentCents: Long?,
-    val last12MonthsSpentCents: Long
+    val last12MonthsSpentCents: Long,
+    val latestKmPerLiter: Double? = null,
+    val isOverconsuming: Boolean = false,
+    val consumptionDropPercent: Int = 0
 )
 
 fun summarizeFuel(points: List<FuelPoint>, today: LocalDate = LocalDate.now()): FuelSummary {
@@ -84,7 +113,18 @@ fun summarizeFuel(points: List<FuelPoint>, today: LocalDate = LocalDate.now()): 
     val totalLiters = points.sumOf { it.liters }
     val totalSpent = points.sumOf { it.amountCents }
 
+    val intervals = fullTankIntervalConsumptions(points)
     val avgKmPerLiter = averageFullTankConsumption(points)
+    val latestKmPerLiter = intervals.lastOrNull()
+
+    var isOverconsuming = false
+    var dropPercent = 0
+    if (avgKmPerLiter != null && latestKmPerLiter != null && intervals.size >= 2) {
+        if (latestKmPerLiter < avgKmPerLiter * 0.85) {
+            isOverconsuming = true
+            dropPercent = kotlin.math.round(((avgKmPerLiter - latestKmPerLiter) / avgKmPerLiter) * 100).toInt()
+        }
+    }
 
     val pricePerLiter = points.filter { it.liters > 0 }
         .map { it.amountCents / it.liters }
@@ -109,6 +149,9 @@ fun summarizeFuel(points: List<FuelPoint>, today: LocalDate = LocalDate.now()): 
         totalLiters = totalLiters,
         totalSpentCents = totalSpent,
         monthlyAvgSpentCents = monthlyAvg,
-        last12MonthsSpentCents = last12Months
+        last12MonthsSpentCents = last12Months,
+        latestKmPerLiter = latestKmPerLiter,
+        isOverconsuming = isOverconsuming,
+        consumptionDropPercent = dropPercent
     )
 }
