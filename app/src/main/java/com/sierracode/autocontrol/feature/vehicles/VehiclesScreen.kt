@@ -3,7 +3,6 @@ package com.sierracode.autocontrol.feature.vehicles
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +52,9 @@ class VehiclesViewModel @Inject constructor(
 
     val isPro = settings.isPro
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    val activeVehicleId = settings.activeVehicleId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing = _isProcessing.asStateFlow()
@@ -105,7 +108,9 @@ fun VehiclesScreen(
     val vehicles by vm.vehicles.collectAsStateWithLifecycle()
     val isPro by vm.isPro.collectAsStateWithLifecycle()
     val isProcessing by vm.isProcessing.collectAsStateWithLifecycle()
+    val activeId by vm.activeVehicleId.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     var showImportDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -128,11 +133,11 @@ fun VehiclesScreen(
             scope.launch {
                 val msg = result.fold(
                     onSuccess = { stats ->
-                        context.getString(R.string.vehicles_backup_success_full, stats.records, stats.images)
+                        resources.getString(R.string.vehicles_backup_success_full, stats.records, stats.images)
                     },
                     onFailure = { error ->
                         val uiError = com.sierracode.autocontrol.core.ui.UiError.from(error)
-                        context.getString(R.string.vehicles_backup_error, uiError.asString(context))
+                        resources.getString(R.string.vehicles_backup_error, uiError.asString(context))
                     }
                 )
                 snackbarHostState.showSnackbar(msg)
@@ -149,11 +154,11 @@ fun VehiclesScreen(
             scope.launch {
                 val msg = result.fold(
                     onSuccess = { stats ->
-                        context.getString(R.string.vehicles_restore_success_full, stats.records, stats.images)
+                        resources.getString(R.string.vehicles_restore_success_full, stats.records, stats.images)
                     },
                     onFailure = { error ->
                         val uiError = com.sierracode.autocontrol.core.ui.UiError.from(error)
-                        context.getString(R.string.vehicles_restore_error, uiError.asString(context))
+                        resources.getString(R.string.vehicles_restore_error, uiError.asString(context))
                     }
                 )
                 snackbarHostState.showSnackbar(msg)
@@ -253,23 +258,32 @@ fun VehiclesScreen(
                 TopAppBar(
                     title = { Text(stringResource(R.string.vehicles_title), fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton(
-                            onClick = { showImportDialog = true },
-                            enabled = !isProcessing
-                        ) {
-                            Icon(Icons.Default.FolderOpen, stringResource(R.string.vehicles_cd_import))
-                        }
-                        IconButton(
-                            onClick = { createDocumentLauncher.launch("AutoControl_Backup.zip") },
-                            enabled = !isProcessing
-                        ) {
-                            Icon(Icons.Default.Save, stringResource(R.string.vehicles_cd_export))
-                        }
-                        IconButton(
-                            onClick = onOpenSettings,
-                            enabled = !isProcessing
-                        ) {
+                        var menuOpen by remember { mutableStateOf(false) }
+                        IconButton(onClick = onOpenSettings, enabled = !isProcessing) {
                             Icon(Icons.Default.Settings, stringResource(R.string.vehicles_cd_settings))
+                        }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }, enabled = !isProcessing) {
+                                Icon(Icons.Default.MoreVert, stringResource(R.string.vehicles_cd_more))
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.vehicles_menu_backup)) },
+                                    leadingIcon = { Icon(Icons.Default.Upload, null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        createDocumentLauncher.launch("AutoControl_Backup.zip")
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.vehicles_menu_restore)) },
+                                    leadingIcon = { Icon(Icons.Default.Download, null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        showImportDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 )
@@ -297,6 +311,10 @@ fun VehiclesScreen(
                     Text(stringResource(R.string.vehicles_empty_subtitle), textAlign = TextAlign.Center)
                     Spacer(Modifier.height(24.dp))
                     Button(onClick = onAddClick) { Text(stringResource(R.string.vehicles_add_first)) }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { showImportDialog = true }, enabled = !isProcessing) {
+                        Text(stringResource(R.string.vehicles_menu_restore))
+                    }
                 }
             } else {
                 LazyColumn(
@@ -310,6 +328,7 @@ fun VehiclesScreen(
                             vehicle = vehicle,
                             isSelectionMode = isSelectionMode,
                             isSelected = isSelected,
+                            isActive = vehicle.id == activeId,
                             onClick = {
                                 if (isSelectionMode) {
                                     val newSelection = if (isSelected) selectedVehicles - vehicle.id
@@ -357,12 +376,12 @@ fun VehiclesScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VehicleCard(
     vehicle: VehicleEntity,
     isSelectionMode: Boolean,
     isSelected: Boolean,
+    isActive: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onEditClick: () -> Unit
@@ -385,11 +404,27 @@ fun VehicleCard(
             )
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "${vehicle.brand} ${vehicle.model}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${vehicle.brand} ${vehicle.model}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isActive) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                stringResource(R.string.vehicles_active),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 Text(
                     "${vehicle.year} • ${vehicle.plates ?: stringResource(R.string.vehicles_no_plates)}",
                     style = MaterialTheme.typography.bodyMedium,
@@ -406,6 +441,11 @@ fun VehicleCard(
                         contentDescription = stringResource(R.string.cd_edit_vehicle)
                     )
                 }
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

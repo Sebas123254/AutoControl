@@ -108,6 +108,10 @@
     <string name="vehicles_cd_export">Exportar</string>
     <string name="vehicles_cd_settings">Ajustes</string>
     <string name="vehicles_cd_add">Agregar Vehículo</string>
+    <string name="vehicles_cd_more">Más opciones</string>
+    <string name="vehicles_menu_backup">Crear respaldo</string>
+    <string name="vehicles_menu_restore">Restaurar respaldo</string>
+    <string name="vehicles_active">Activo</string>
     <string name="vehicles_delete_maint_title">Eliminar mantenimiento</string>
     <string name="vehicles_delete_maint_desc">¿Deseas eliminar la programación de \'%1$s\'? El historial de gastos no se borrará.</string>
     <string name="vehicles_delete_maint_snackbar">Mantenimiento \'%1$s\' eliminado</string>
@@ -424,6 +428,8 @@
     <string name="goal_deleted">Objetivo \"%1$s\" eliminado</string>
     <string name="reminder_deleted">Recordatorio eliminado</string>
     <string name="goals_filter_count">%1$s (%2$d)</string>
+    <string name="goals_saved_amount_hint">Déjalo en 0 si apenas empiezas</string>
+    <string name="goals_amount_hint">Lo que crees que costará</string>
 
     <!-- Documentos -->
     <string name="documents_title">Documentos</string>

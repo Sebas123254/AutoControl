@@ -35,6 +35,7 @@ fun CurrencyField(
     modifier: Modifier = Modifier,
     isError: Boolean = false,
     errorMessage: String? = null,
+    helperText: String? = null,
     imeAction: ImeAction = ImeAction.Next,
     onImeAction: () -> Unit = {}
 ) {
@@ -79,9 +80,9 @@ fun CurrencyField(
         label = { Text(label) },
         suffix = { Text(currencyCode) },
         isError = isError,
-        supportingText = if (isError && errorMessage != null) {
-            { Text(errorMessage) }
-        } else null,
+        supportingText = (errorMessage.takeIf { isError } ?: helperText)?.let { msg ->
+            { Text(msg) }
+        },
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Decimal,
             imeAction = imeAction
