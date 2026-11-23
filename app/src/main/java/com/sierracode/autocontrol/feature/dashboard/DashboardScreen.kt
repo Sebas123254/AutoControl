@@ -1,5 +1,6 @@
 package com.sierracode.autocontrol.feature.dashboard
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,8 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -26,21 +30,19 @@ import androidx.lifecycle.viewModelScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.format.MoneyFormatter
 import com.sierracode.autocontrol.core.format.formatCostPerDistance
 import com.sierracode.autocontrol.core.format.formatEfficiency
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
+import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.core.ui.components.IconBubble
 import com.sierracode.autocontrol.core.ui.components.StatusChip
 import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
 import com.sierracode.autocontrol.data.repository.*
-import com.sierracode.autocontrol.domain.calc.FuelPoint
-import com.sierracode.autocontrol.domain.calc.Urgency
-import com.sierracode.autocontrol.domain.calc.calculateTotalCost
-import com.sierracode.autocontrol.domain.calc.evaluateSchedule
-import com.sierracode.autocontrol.domain.calc.summarizeFuel
+import com.sierracode.autocontrol.domain.calc.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -82,7 +84,9 @@ class DashboardViewModel @Inject constructor(
     private val expenseRepo: ExpenseRepository,
     private val fuelRepo: FuelRepository,
     private val scheduleRepo: ScheduleRepository,
-    private val reminderRepo: ReminderRepository
+    private val reminderRepo: ReminderRepository,
+    private val documentRepo: DocumentRepository,
+    private val categoryRepo: CategoryRepository
 ) : ViewModel() {
     private val vehicleIdFlow = MutableStateFlow<String?>(null)
     private val summaryPeriodFlow = MutableStateFlow(SummaryPeriod.THIS_MONTH)
@@ -202,6 +206,37 @@ class DashboardViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val expiringDocuments = vehicleIdFlow.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else {
+            documentRepo.observeByVehicle(id).map { docs ->
+                val today = LocalDate.now().toEpochDay()
+                filterExpiringDocuments(docs, today, maxDaysAhead = 30L, limit = 3)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val categoryBreakdown = vehicleIdFlow.flatMapLatest { id ->
+        if (id == null) flowOf(null) else {
+            summaryPeriodFlow.flatMapLatest { period ->
+                val (from, to) = getPeriodRange(period)
+                combine(
+                    expenseRepo.observeByCategory(id, from, to),
+                    categoryRepo.observeAll()
+                ) { totals, categories ->
+                    val catMap = categories.associate { it.id to it.name }
+                    val inputs = totals.map { row ->
+                        CategoryAmountInput(
+                            categoryId = row.categoryId,
+                            name = catMap[row.categoryId] ?: row.categoryId,
+                            amountCents = row.totalCents
+                        )
+                    }
+                    calculateCategoryBreakdown(inputs)
+                }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     var scheduleToEdit by mutableStateOf<EvaluatedSchedule?>(null)
         private set
 
@@ -290,6 +325,8 @@ fun DashboardScreen(
     onRegisterMaintenance: () -> Unit,
     onOpenReminders: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDocument: (String) -> Unit = {},
+    onViewAllDocuments: () -> Unit = {},
     vm: DashboardViewModel = hiltViewModel()
 ) {
     LaunchedEffect(vehicleId) { vm.loadVehicle(vehicleId) }
@@ -304,6 +341,8 @@ fun DashboardScreen(
     val fuelStats by vm.fuelStats.collectAsStateWithLifecycle()
     val schedules by vm.schedules.collectAsStateWithLifecycle()
     val selectedPeriod by vm.summaryPeriod.collectAsStateWithLifecycle()
+    val expiringDocuments by vm.expiringDocuments.collectAsStateWithLifecycle()
+    val categoryBreakdown by vm.categoryBreakdown.collectAsStateWithLifecycle()
 
     var showAllSchedules by remember { mutableStateOf(false) }
     var scheduleToDelete by remember { mutableStateOf<EvaluatedSchedule?>(null) }
@@ -621,7 +660,25 @@ fun DashboardScreen(
                 )
 
                 // ============================
-                // 5. COSTO ACUMULADO (información secundaria)
+                // 5. DOCUMENTOS POR VENCER (≤30 días o vencidos)
+                // ============================
+                if (expiringDocuments.isNotEmpty()) {
+                    ExpiringDocumentsSection(
+                        items = expiringDocuments,
+                        onDocumentClick = onOpenDocument,
+                        onViewAll = onViewAllDocuments
+                    )
+                }
+
+                // ============================
+                // 6. DESGLOSE POR CATEGORÍA
+                // ============================
+                if (!categoryBreakdown.isNullOrEmpty()) {
+                    CategoryBreakdownSection(items = categoryBreakdown!!)
+                }
+
+                // ============================
+                // 7. COSTO ACUMULADO (información secundaria)
                 // ============================
                 if (v.purchasePriceCents != null) {
                     TotalCostCard(
@@ -1086,6 +1143,201 @@ fun MaintenanceCard(schedule: EvaluatedSchedule, onClick: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = contentColor.copy(alpha = 0.85f)
                     )
+                }
+            }
+        }
+    }
+}
+
+// ==========================================================
+// Bloque: Documentos por vencer
+// ==========================================================
+@Composable
+fun ExpiringDocumentsSection(
+    items: List<ExpiringDocumentItem>,
+    onDocumentClick: (String) -> Unit,
+    onViewAll: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeader(
+            title = stringResource(R.string.dashboard_expiring_docs_title),
+            actionLabel = stringResource(R.string.dashboard_view_all),
+            onActionClick = onViewAll
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    val expiryText = if (item.isExpired) {
+                        stringResource(R.string.docs_expired, -item.daysRemaining)
+                    } else {
+                        stringResource(R.string.docs_expiring, item.daysRemaining)
+                    }
+                    val expiryColor = if (item.isExpired) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    val cdOpen = stringResource(R.string.cd_open_document, item.document.name)
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onDocumentClick(item.document.id) }
+                            .semantics { contentDescription = cdOpen }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.document.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = expiryText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (item.isExpired) FontWeight.Bold else FontWeight.Normal,
+                            color = expiryColor
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================================
+// Bloque: Desglose por categoría
+// ==========================================================
+@Composable
+fun CategoryBreakdownSection(
+    items: List<CategoryBreakdownItem>
+) {
+    val categoryColors = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.surfaceVariant
+    )
+
+    val otherLabel = stringResource(R.string.stats_others)
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeader(title = stringResource(R.string.dashboard_category_breakdown))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Barra horizontal apilada accesible
+                val totalPercent = items.sumOf { it.percentage }
+                val itemLabels = items.map { item ->
+                    if (item.categoryId == "other") otherLabel else localizedCategoryName(item.categoryId, item.name)
+                }
+                val breakdownCd = items.mapIndexed { i, item ->
+                    "${itemLabels[i]}: ${String.format(java.util.Locale.US, "%.1f", item.percentage)}%"
+                }.joinToString(", ")
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(12.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .semantics { contentDescription = breakdownCd }
+                ) {
+                    items.forEachIndexed { index, item ->
+                        val color = categoryColors.getOrElse(index) { MaterialTheme.colorScheme.outline }
+                        val weight = (item.percentage.toFloat() / (if (totalPercent > 0) totalPercent.toFloat() else 100f)).coerceAtLeast(0f)
+                        if (weight > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .weight(weight)
+                                    .background(color)
+                            )
+                        }
+                    }
+                }
+
+                // Lista de categorías (máx 4 filas)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items.forEachIndexed { index, item ->
+                        val color = categoryColors.getOrElse(index) { MaterialTheme.colorScheme.outline }
+                        val displayName = if (item.categoryId == "other") otherLabel else localizedCategoryName(item.categoryId, item.name)
+                        val formattedPercentage = String.format(java.util.Locale.US, "%.1f%%", item.percentage)
+                        val formattedAmount = MoneyFormatter.format(item.amountCents)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = formattedAmount,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = formattedPercentage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

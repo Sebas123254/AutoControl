@@ -161,7 +161,15 @@ fun MainScreen(
                     onRegisterFuel = { navController.navigate("fuel_edit/$vehicleId") },
                     onRegisterMaintenance = { navController.navigate("maint_edit/$vehicleId") },
                     onOpenReminders = { navController.navigate("reminders") },
-                    onOpenSettings = onOpenSettings
+                    onOpenSettings = onOpenSettings,
+                    onOpenDocument = { docId -> navController.navigate("document_detail/$docId") },
+                    onViewAllDocuments = {
+                        navController.navigate(BottomNavItem.Documents.route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
             composable(BottomNavItem.Expenses.route) {

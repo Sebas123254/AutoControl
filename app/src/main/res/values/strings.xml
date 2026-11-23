@@ -167,6 +167,17 @@
     <string name="dashboard_maint_err_interval">Los intervalos deben ser mayores a 0.</string>
     <string name="dashboard_maint_err_negative">Los avisos no pueden ser negativos.</string>
     <string name="dashboard_maint_delete">Eliminar mantenimiento</string>
+    <string name="dashboard_summary">Resumen</string>
+    <string name="dashboard_vehicle_status">Estado del vehículo</string>
+    <string name="dashboard_vehicle_status_ok">Todo en orden</string>
+    <string name="dashboard_spending_increase">↑ %1$s%% vs. %2$s</string>
+    <string name="dashboard_spending_decrease">↓ %1$s%% vs. %2$s</string>
+    <string name="dashboard_spending_vs_last_month">mes pasado</string>
+    <string name="dashboard_spending_vs_prev_month">mes anterior</string>
+    <string name="dashboard_spending_vs_last_year">año anterior</string>
+    <string name="dashboard_expiring_docs_title">Documentos por vencer</string>
+    <string name="dashboard_category_breakdown">Desglose por categoría</string>
+    <string name="cd_open_document">Abrir documento %1$s</string>
 
     <!-- Gastos -->
     <string name="expenses_title">Historial de Gastos</string>
@@ -403,7 +414,7 @@
     <string name="goals_diff_over">Gastaste %1$s más de lo estimado</string>
     <string name="goals_diff_saved">¡Ahorraste %1$s!</string>
     <string name="goals_saved">Ahorrado %1$s de %2$s (%3$d%%)</string>
-    <string name="goals_saved_amount">Monto ahorrado actual</string>
+    <string name="goals_saved_amount">¿Cuánto llevas ahorrado? (opcional)</string>
     <string name="goals_add_saving">Abonar ahorro</string>
     <string name="goals_add_saving_title">Registrar ahorro</string>
     <string name="goals_add_saving_desc">Ingresa el monto que deseas abonar a este objetivo:</string>

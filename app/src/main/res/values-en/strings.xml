@@ -167,6 +167,17 @@
     <string name="dashboard_maint_err_interval">Intervals must be greater than 0.</string>
     <string name="dashboard_maint_err_negative">Reminders cannot be negative.</string>
     <string name="dashboard_maint_delete">Delete maintenance</string>
+    <string name="dashboard_summary">Summary</string>
+    <string name="dashboard_vehicle_status">Vehicle status</string>
+    <string name="dashboard_vehicle_status_ok">All good</string>
+    <string name="dashboard_spending_increase">↑ %1$s%% vs. %2$s</string>
+    <string name="dashboard_spending_decrease">↓ %1$s%% vs. %2$s</string>
+    <string name="dashboard_spending_vs_last_month">last month</string>
+    <string name="dashboard_spending_vs_prev_month">previous month</string>
+    <string name="dashboard_spending_vs_last_year">last year</string>
+    <string name="dashboard_expiring_docs_title">Expiring documents</string>
+    <string name="dashboard_category_breakdown">Category breakdown</string>
+    <string name="cd_open_document">Open document %1$s</string>
 
     <!-- Gastos -->
     <string name="expenses_title">Expense History</string>
@@ -403,7 +414,7 @@
     <string name="goals_diff_over">You spent %1$s more than estimated</string>
     <string name="goals_diff_saved">You saved %1$s!</string>
     <string name="goals_saved">Saved %1$s of %2$s (%3$d%%)</string>
-    <string name="goals_saved_amount">Current saved amount</string>
+    <string name="goals_saved_amount">How much have you saved so far? (optional)</string>
     <string name="goals_add_saving">Add savings</string>
     <string name="goals_add_saving_title">Log savings</string>
     <string name="goals_add_saving_desc">Enter the amount you want to contribute to this goal:</string>
