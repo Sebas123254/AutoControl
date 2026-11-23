@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -224,7 +225,7 @@ fun VehicleEditScreen(
                 value = brand,
                 onValueChange = { vm.updateBrand(it) },
                 label = { Text(stringResource(R.string.vehicles_brand_label)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -232,7 +233,7 @@ fun VehicleEditScreen(
                 value = model,
                 onValueChange = { vm.updateModel(it) },
                 label = { Text(stringResource(R.string.vehicles_model_label)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )

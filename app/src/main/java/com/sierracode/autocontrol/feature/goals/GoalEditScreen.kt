@@ -12,12 +12,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -227,11 +229,15 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            var showMore by rememberSaveable { mutableStateOf(false) }
+            val hasDetails = maxAmount.isNotBlank() || notes.isNotBlank() ||
+                    targetDate != null || selectedCategory != null
+
             OutlinedTextField(
                 value = title,
                 onValueChange = { vm.updateTitle(it) },
                 label = { Text(stringResource(R.string.goals_field_title)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -240,14 +246,7 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                 value = amount,
                 onValueChange = { vm.updateAmount(it) },
                 label = stringResource(R.string.goals_field_amount),
-                currencyCode = config.currencyCode,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            CurrencyField(
-                value = maxAmount,
-                onValueChange = { vm.updateMaxAmount(it) },
-                label = stringResource(R.string.goals_field_max),
+                helperText = stringResource(R.string.goals_amount_hint),
                 currencyCode = config.currencyCode,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -256,74 +255,95 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                 value = savedAmount,
                 onValueChange = { vm.updateSavedAmount(it) },
                 label = stringResource(R.string.goals_saved_amount),
+                helperText = stringResource(R.string.goals_saved_amount_hint),
                 currencyCode = config.currencyCode,
                 modifier = Modifier.fillMaxWidth()
             )
 
-            ExposedDropdownMenuBox(expanded = expandedPrio, onExpandedChange = { expandedPrio = !expandedPrio }) {
-                OutlinedTextField(
-                    value = localizedPriority(priority),
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.goals_field_priority)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedPrio) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(expanded = expandedPrio, onDismissRequest = { expandedPrio = false }) {
-                    listOf("ALTA", "MEDIA", "BAJA").forEach { p ->
-                        DropdownMenuItem(
-                            text = { Text(localizedPriority(p)) },
-                            onClick = { vm.updatePriority(p); expandedPrio = false }
-                        )
-                    }
+            Text(
+                stringResource(R.string.goals_field_priority),
+                style = MaterialTheme.typography.labelLarge
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("ALTA", "MEDIA", "BAJA").forEach { p ->
+                    FilterChip(
+                        selected = priority == p,
+                        onClick = { vm.updatePriority(p) },
+                        label = { Text(localizedPriority(p).removePrefix("Prioridad "), maxLines = 1) }
+                    )
                 }
             }
 
-            ExposedDropdownMenuBox(expanded = expandedCat, onExpandedChange = { expandedCat = !expandedCat }) {
-                OutlinedTextField(
-                    value = selectedCategory?.let { localizedCategoryName(it.id, it.name) }
-                        ?: stringResource(R.string.expense_edit_select_category),
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.goals_field_category)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedCat) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(expanded = expandedCat, onDismissRequest = { expandedCat = false }) {
-                    cats.forEach { c ->
-                        DropdownMenuItem(
-                            text = { Text(localizedCategoryName(c.id, c.name)) },
-                            onClick = { vm.updateCategory(c); expandedCat = false }
-                        )
-                    }
+            if (!hasDetails) {
+                TextButton(onClick = { showMore = !showMore }) {
+                    Text(if (showMore) "Menos detalles" else "Más detalles (opcional)")
                 }
             }
 
-            Box(Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = targetDate?.let { formatDate(it.toEpochDay()) } ?: "",
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = false,
-                    label = { Text(stringResource(R.string.goals_field_date)) },
-                    trailingIcon = {
-                        Icon(
-                            Icons.Default.DateRange,
-                            contentDescription = stringResource(R.string.action_choose_date)
-                        )
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
-                    ),
+            if (showMore || hasDetails) {
+                CurrencyField(
+                    value = maxAmount,
+                    onValueChange = { vm.updateMaxAmount(it) },
+                    label = stringResource(R.string.goals_field_max),
+                    currencyCode = config.currencyCode,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable { showDatePicker = true }
+
+                ExposedDropdownMenuBox(expanded = expandedCat, onExpandedChange = { expandedCat = !expandedCat }) {
+                    OutlinedTextField(
+                        value = selectedCategory?.let { localizedCategoryName(it.id, it.name) }
+                            ?: stringResource(R.string.expense_edit_select_category),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.goals_field_category)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedCat) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = expandedCat, onDismissRequest = { expandedCat = false }) {
+                        cats.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text(localizedCategoryName(c.id, c.name)) },
+                                onClick = { vm.updateCategory(c); expandedCat = false }
+                            )
+                        }
+                    }
+                }
+
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = targetDate?.let { formatDate(it.toEpochDay()) } ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        enabled = false,
+                        label = { Text(stringResource(R.string.goals_field_date)) },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Default.DateRange,
+                                contentDescription = stringResource(R.string.action_choose_date)
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { showDatePicker = true }
+                    )
+                }
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { vm.updateNotes(it) },
+                    label = { Text(stringResource(R.string.goals_field_notes)) },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -355,15 +375,6 @@ fun GoalEditScreen(onDone: () -> Unit, vm: GoalEditViewModel = hiltViewModel()) 
                     }
                 ) { DatePicker(state = state) }
             }
-
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { vm.updateNotes(it) },
-                label = { Text(stringResource(R.string.goals_field_notes)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                modifier = Modifier.fillMaxWidth()
-            )
 
             vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 

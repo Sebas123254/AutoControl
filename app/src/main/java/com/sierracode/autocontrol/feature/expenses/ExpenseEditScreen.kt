@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -444,7 +445,7 @@ fun ExpenseEditScreen(
                     value = customCategoryName,
                     onValueChange = { vm.updateCustomCategoryName(it) },
                     label = { Text(stringResource(R.string.expense_custom_category_label)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                     isError = vm.error == context.getString(R.string.expense_custom_category_err),
                     supportingText = {
@@ -501,7 +502,7 @@ fun ExpenseEditScreen(
                 value = description,
                 onValueChange = { vm.updateDescription(it) },
                 label = { Text(stringResource(R.string.expense_edit_desc)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
                 modifier = Modifier.fillMaxWidth()
             )
 
