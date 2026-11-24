@@ -35,6 +35,8 @@ import com.sierracode.autocontrol.data.preferences.SettingsStore
 import android.content.Context
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.sierracode.autocontrol.core.ui.components.VehicleAvatar
+import com.sierracode.autocontrol.core.ui.components.VehicleBanner
+import com.sierracode.autocontrol.core.ui.components.getVehicleImageModel
 import com.sierracode.autocontrol.core.util.ImageUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.sierracode.autocontrol.data.repository.VehicleRepository
@@ -399,72 +401,92 @@ fun VehicleCard(
     onLongClick: () -> Unit,
     onEditClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val hasPhoto = remember(vehicle.photoUri) { getVehicleImageModel(context, vehicle.photoUri) != null }
+
     Card(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surface
         )
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            VehicleAvatar(
-                photoUri = vehicle.photoUri,
-                size = 60.dp,
-                shape = RoundedCornerShape(12.dp),
-                containerColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
-                else MaterialTheme.colorScheme.primaryContainer,
-                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                else MaterialTheme.colorScheme.primary,
-                contentDescription = vehicle.displayName()
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        vehicle.displayName(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f, fill = false)
+        Column {
+            if (hasPhoto) {
+                VehicleBanner(
+                    photoUri = vehicle.photoUri,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp),
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                    contentDescription = vehicle.displayName()
+                )
+            }
+
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!hasPhoto) {
+                    VehicleAvatar(
+                        photoUri = null,
+                        size = 52.dp,
+                        shape = RoundedCornerShape(12.dp),
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.primary,
+                        contentDescription = vehicle.displayName()
                     )
-                    if (isActive) {
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Text(
-                                stringResource(R.string.vehicles_active),
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
+                    Spacer(Modifier.width(16.dp))
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            vehicle.displayName(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (isActive) {
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    stringResource(R.string.vehicles_active),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
+                    val sub = vehicle.subtitle()
+                    if (sub.isNotBlank()) {
+                        Text(
+                            sub,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(formatKm(vehicle.odometer), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                 }
-                val sub = vehicle.subtitle()
-                if (sub.isNotBlank()) {
-                    Text(
-                        sub,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Text(formatKm(vehicle.odometer), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-            }
-            if (isSelectionMode) {
-                Checkbox(checked = isSelected, onCheckedChange = null)
-            } else {
-                IconButton(onClick = onEditClick) {
+                if (isSelectionMode) {
+                    Checkbox(checked = isSelected, onCheckedChange = null)
+                } else {
+                    IconButton(onClick = onEditClick) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.cd_edit_vehicle)
+                        )
+                    }
                     Icon(
-                        Icons.Default.Edit,
-                        contentDescription = stringResource(R.string.cd_edit_vehicle)
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(
-                    Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

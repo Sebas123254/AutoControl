@@ -39,12 +39,10 @@ import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
 import com.sierracode.autocontrol.core.format.localizedCategoryName
 import com.sierracode.autocontrol.core.format.subtitle
-import androidx.compose.ui.platform.LocalContext
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.core.ui.components.IconBubble
 import com.sierracode.autocontrol.core.ui.components.StatusChip
-import com.sierracode.autocontrol.core.ui.components.VehicleBanner
-import com.sierracode.autocontrol.core.ui.components.getVehicleImageModel
+import com.sierracode.autocontrol.core.ui.components.VehicleAvatar
 import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
 import com.sierracode.autocontrol.data.repository.*
 import com.sierracode.autocontrol.domain.calc.*
@@ -568,77 +566,41 @@ fun DashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // ============================
-                // 1. Tarjeta del vehículo (Garaje)
+                // 1. Tarjeta del vehículo (Dashboard compacto)
                 // ============================
-                val context = LocalContext.current
-                val hasPhoto = remember(v.photoUri) { getVehicleImageModel(context, v.photoUri) != null }
-
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    if (hasPhoto) {
-                        Column {
-                            VehicleBanner(
-                                photoUri = v.photoUri,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp),
-                                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                                contentDescription = v.displayName()
+                    Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        VehicleAvatar(
+                            photoUri = v.photoUri,
+                            size = 52.dp,
+                            shape = RoundedCornerShape(14.dp),
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            contentDescription = v.displayName()
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(v.displayName(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(2.dp))
+                            val sub = v.subtitle()
+                            Text(
+                                if (sub.isNotBlank()) "${formatKm(v.odometer)} • $sub" else formatKm(v.odometer),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(
-                                modifier = Modifier.padding(20.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        v.displayName(),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    val sub = v.subtitle()
-                                    Text(
-                                        if (sub.isNotBlank()) "$sub • ${formatKm(v.odometer)}" else formatKm(v.odometer),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                IconButton(onClick = onEditVehicle) {
-                                    Icon(
-                                        Icons.Default.Edit,
-                                        contentDescription = cdEditVehicle,
-                                        modifier = Modifier.size(20.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
                         }
-                    } else {
-                        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconBubble(icon = Icons.Default.DirectionsCar, size = 48.dp)
-                            Spacer(Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(v.displayName(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(2.dp))
-                                val sub = v.subtitle()
-                                Text(
-                                    if (sub.isNotBlank()) "${formatKm(v.odometer)} • $sub" else formatKm(v.odometer),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(onClick = onEditVehicle) {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = cdEditVehicle,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                        IconButton(onClick = onEditVehicle) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = cdEditVehicle,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
