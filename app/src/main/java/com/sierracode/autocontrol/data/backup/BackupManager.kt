@@ -325,7 +325,11 @@ private fun VehicleEntity.toDto() = VehicleDto(
     currencyCode = currencyCode,
     unitSystem = unitSystem,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    nickname = nickname,
+    engine = engine,
+    cylinders = cylinders,
+    transmission = transmission
 )
 
 private fun ExpenseEntity.toDto() = ExpenseDto(
@@ -451,7 +455,11 @@ private fun VehicleDto.toEntity() = VehicleEntity(
     currencyCode = currencyCode,
     unitSystem = unitSystem,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    nickname = nickname,
+    engine = engine,
+    cylinders = cylinders,
+    transmission = transmission
 )
 
 private fun ExpenseDto.toEntity() = ExpenseEntity(

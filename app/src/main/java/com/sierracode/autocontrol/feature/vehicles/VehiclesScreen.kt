@@ -25,11 +25,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.format.displayName
 import com.sierracode.autocontrol.core.format.formatKm
+import com.sierracode.autocontrol.core.format.subtitle
 import com.sierracode.autocontrol.data.backup.BackupManager
 import com.sierracode.autocontrol.data.backup.BackupStats
 import com.sierracode.autocontrol.data.local.entity.VehicleEntity
 import com.sierracode.autocontrol.data.preferences.SettingsStore
+import android.content.Context
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.sierracode.autocontrol.core.ui.components.VehicleAvatar
+import com.sierracode.autocontrol.core.util.ImageUtils
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +52,8 @@ class VehiclesViewModel @Inject constructor(
     private val repo: VehicleRepository,
     private val settings: SettingsStore,
     private val backupManager: BackupManager,
-    private val orphanFileSweeper: com.sierracode.autocontrol.core.util.OrphanFileSweeper
+    private val orphanFileSweeper: com.sierracode.autocontrol.core.util.OrphanFileSweeper,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
     val vehicles = repo.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -63,6 +71,11 @@ class VehiclesViewModel @Inject constructor(
     fun setPro(value: Boolean) = viewModelScope.launch { settings.setPro(value) }
 
     fun deleteVehicles(ids: List<String>) = viewModelScope.launch {
+        ids.forEach { id ->
+            repo.get(id)?.photoUri?.let { photo ->
+                ImageUtils.deleteLocalFile(context, photo)
+            }
+        }
         repo.deleteMultiple(ids)
         val active = settings.activeVehicleId.first()
         if (active != null && ids.contains(active)) {
@@ -395,18 +408,21 @@ fun VehicleCard(
         )
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Default.DirectionsCar,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                else MaterialTheme.colorScheme.primary
+            VehicleAvatar(
+                photoUri = vehicle.photoUri,
+                size = 60.dp,
+                shape = RoundedCornerShape(12.dp),
+                containerColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
+                else MaterialTheme.colorScheme.primaryContainer,
+                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.primary,
+                contentDescription = vehicle.displayName()
             )
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${vehicle.brand} ${vehicle.model}",
+                        vehicle.displayName(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f, fill = false)
@@ -425,11 +441,14 @@ fun VehicleCard(
                         }
                     }
                 }
-                Text(
-                    "${vehicle.year} • ${vehicle.plates ?: stringResource(R.string.vehicles_no_plates)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                val sub = vehicle.subtitle()
+                if (sub.isNotBlank()) {
+                    Text(
+                        sub,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Text(formatKm(vehicle.odometer), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
             if (isSelectionMode) {

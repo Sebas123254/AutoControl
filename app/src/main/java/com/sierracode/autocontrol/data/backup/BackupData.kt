@@ -27,7 +27,7 @@ data class BackupData(
     val goals: List<GoalDto> = emptyList()
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 9
+        const val CURRENT_SCHEMA_VERSION = 10
     }
 }
 
@@ -51,7 +51,11 @@ data class VehicleDto(
     val currencyCode: String = "MXN",
     val unitSystem: String = "METRIC",
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val nickname: String? = null,
+    val engine: String? = null,
+    val cylinders: Int? = null,
+    val transmission: String? = null
 )
 
 @Serializable

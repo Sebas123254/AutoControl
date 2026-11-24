@@ -31,15 +31,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.sierracode.autocontrol.R
 import com.sierracode.autocontrol.core.format.MoneyFormatter
+import com.sierracode.autocontrol.core.format.displayName
 import com.sierracode.autocontrol.core.format.formatCostPerDistance
 import com.sierracode.autocontrol.core.format.formatEfficiency
 import com.sierracode.autocontrol.core.format.formatKm
 import com.sierracode.autocontrol.core.format.formatMoneyCents
 import com.sierracode.autocontrol.core.format.formatMoneyCentsWithCode
 import com.sierracode.autocontrol.core.format.localizedCategoryName
+import com.sierracode.autocontrol.core.format.subtitle
+import androidx.compose.ui.platform.LocalContext
 import com.sierracode.autocontrol.core.ui.components.EmptyStateCard
 import com.sierracode.autocontrol.core.ui.components.IconBubble
 import com.sierracode.autocontrol.core.ui.components.StatusChip
+import com.sierracode.autocontrol.core.ui.components.VehicleBanner
+import com.sierracode.autocontrol.core.ui.components.getVehicleImageModel
 import com.sierracode.autocontrol.data.local.entity.MaintenanceScheduleEntity
 import com.sierracode.autocontrol.data.repository.*
 import com.sierracode.autocontrol.domain.calc.*
@@ -515,7 +520,7 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = vehicle?.let { "${it.brand} ${it.model}" } ?: stringResource(R.string.dashboard_title),
+                                text = vehicle?.displayName() ?: stringResource(R.string.dashboard_title),
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -526,7 +531,7 @@ fun DashboardScreen(
                         }
                         DropdownMenu(expanded = showSwitchMenu, onDismissRequest = { showSwitchMenu = false }) {
                             allVehicles.forEach { v ->
-                                DropdownMenuItem(text = { Text("${v.brand} ${v.model}") }, onClick = {
+                                DropdownMenuItem(text = { Text(v.displayName()) }, onClick = {
                                     showSwitchMenu = false
                                     if (v.id != vehicleId) onSwitchVehicle(v.id)
                                 })
@@ -563,28 +568,77 @@ fun DashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // ============================
-                // 1. Tarjeta del vehículo (sin cambios)
+                // 1. Tarjeta del vehículo (Garaje)
                 // ============================
+                val context = LocalContext.current
+                val hasPhoto = remember(v.photoUri) { getVehicleImageModel(context, v.photoUri) != null }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconBubble(icon = Icons.Default.DirectionsCar, size = 48.dp)
-                        Spacer(Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("${v.brand} ${v.model}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "${formatKm(v.odometer)} • ${v.plates ?: stringResource(R.string.vehicles_no_plates)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (hasPhoto) {
+                        Column {
+                            VehicleBanner(
+                                photoUri = v.photoUri,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp),
+                                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                                contentDescription = v.displayName()
                             )
+                            Row(
+                                modifier = Modifier.padding(20.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        v.displayName(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    val sub = v.subtitle()
+                                    Text(
+                                        if (sub.isNotBlank()) "$sub • ${formatKm(v.odometer)}" else formatKm(v.odometer),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = onEditVehicle) {
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = cdEditVehicle,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
-                        IconButton(onClick = onEditVehicle) {
-                            Icon(Icons.Default.Edit, contentDescription = cdEditVehicle, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconBubble(icon = Icons.Default.DirectionsCar, size = 48.dp)
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(v.displayName(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(2.dp))
+                                val sub = v.subtitle()
+                                Text(
+                                    if (sub.isNotBlank()) "${formatKm(v.odometer)} • $sub" else formatKm(v.odometer),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = onEditVehicle) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = cdEditVehicle,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

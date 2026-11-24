@@ -74,7 +74,14 @@
     <string name="priority_baja">Prioridad Baja</string>
 
     <!-- Vehículos -->
-    <string name="vehicles_title">Mis vehículos</string>
+    <string name="vehicles_title">Mi Garaje</string>
+    <string name="vehicles_photo_section">Foto del vehículo</string>
+    <string name="vehicles_photo_camera">Tomar foto</string>
+    <string name="vehicles_photo_gallery">Elegir de galería</string>
+    <string name="vehicles_photo_remove">Eliminar foto</string>
+    <string name="vehicles_photo_change">Cambiar foto</string>
+    <string name="vehicles_photo_cd">Fotografía del vehículo</string>
+    <string name="vehicles_photo_err_save">No se pudo procesar la imagen seleccionada.</string>
     <string name="vehicles_new_title">Nuevo Vehículo</string>
     <string name="vehicles_edit_title">Editar Vehículo</string>
     <string name="vehicles_empty_title">Aún no tienes vehículos</string>
@@ -98,6 +105,24 @@
     <string name="vehicles_currency_label">Divisa</string>
     <string name="vehicles_odometer_label">Odómetro actual *</string>
     <string name="vehicles_price_label">Precio original o de compra (Opcional)</string>
+    <string name="vehicles_more_details">Más detalles (opcional)</string>
+    <string name="vehicles_less_details">Menos detalles</string>
+    <string name="vehicles_field_nickname">Apodo (Ej. La Bestia)</string>
+    <string name="vehicles_field_trim">Versión (Ej. GTI, XLT)</string>
+    <string name="vehicles_field_engine">Motor (Ej. 2.0L Turbo)</string>
+    <string name="vehicles_field_cylinders">Cilindros (1-16)</string>
+    <string name="vehicles_field_transmission">Transmisión</string>
+    <string name="vehicles_trans_manual">Manual</string>
+    <string name="vehicles_trans_automatic">Automática</string>
+    <string name="vehicles_field_color">Color</string>
+    <string name="vehicles_field_fuel_type">Combustible</string>
+    <string name="vehicles_field_tank_capacity">Capacidad del tanque</string>
+    <string name="vehicles_err_cylinders">Los cilindros deben estar entre 1 y 16</string>
+    <string name="vehicles_err_tank">La capacidad del tanque debe ser mayor a 0</string>
+    <string name="fuel_type_gas">Gasolina</string>
+    <string name="fuel_type_diesel">Diésel</string>
+    <string name="fuel_type_lpg">Gas LP</string>
+    <string name="fuel_type_ev">Eléctrico</string>
     <string name="vehicles_save_btn">Guardar Vehículo</string>
     <string name="vehicles_saved_toast">Vehículo guardado correctamente</string>
     <string name="vehicles_err_required">Por favor llena los campos obligatorios</string>
@@ -383,7 +408,7 @@
     <string name="goals_filter_all">Todas (%1$d)</string>
     <string name="goals_filter_showing">Mostrando: %1$s</string>
     <string name="goals_general_total">Total general pendiente: %1$s</string>
-    <string name="goals_range">entre %1$s y %2$s</string>
+    <string name="goals_range">Entre %1$s y %2$s</string>
     <string name="goals_completed_section">Comprados (%1$d)</string>
     <string name="goals_est">Estimado: %1$s</string>
     <string name="goals_real_vs_est">Estimado %1$s · Real %2$s</string>

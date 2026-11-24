@@ -23,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.sierracode.autocontrol.R
+import com.sierracode.autocontrol.core.format.displayName
 import com.sierracode.autocontrol.data.repository.VehicleRepository
 import com.sierracode.autocontrol.feature.dashboard.DashboardScreen
 import com.sierracode.autocontrol.feature.documents.DocumentDetailScreen
@@ -66,7 +67,7 @@ class MainViewModel @Inject constructor(
 
     val vehicleName = vehicleIdFlow.flatMapLatest { id ->
         if (id.isBlank()) flowOf("") else vehicleRepo.observe(id).map { v ->
-            v?.let { "${it.brand} ${it.model}" } ?: ""
+            v?.displayName() ?: ""
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 

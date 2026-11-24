@@ -23,7 +23,11 @@ data class VehicleEntity(
     val currencyCode: String = "MXN", // <-- NUEVO
     val unitSystem: String = "METRIC", // <-- NUEVO
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val nickname: String? = null,
+    val engine: String? = null,
+    val cylinders: Int? = null,
+    val transmission: String? = null
 )
 
 @Entity(

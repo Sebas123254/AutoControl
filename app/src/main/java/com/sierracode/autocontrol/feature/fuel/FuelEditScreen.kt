@@ -118,11 +118,23 @@ class FuelEditViewModel @Inject constructor(
             viewModelScope.launch {
                 val unitSystem = settingsStore.unitSystem.first()
                 val vehicle = vehicleRepo.observe(vehicleId).first()
-                if (vehicle != null && odometer.value.isBlank()) {
-                    savedStateHandle["odometer"] = if (unitSystem == UnitSystem.US) {
-                        UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
-                    } else {
-                        vehicle.odometer.toString()
+                if (vehicle != null) {
+                    if (odometer.value.isBlank()) {
+                        savedStateHandle["odometer"] = if (unitSystem == UnitSystem.US) {
+                            UnitConverter.kmToMiles(vehicle.odometer).roundToLong().toString()
+                        } else {
+                            vehicle.odometer.toString()
+                        }
+                    }
+                    if (savedStateHandle.get<String?>("categoryId") == null) {
+                        val defaultCatId = when (vehicle.fuelType) {
+                            "GASOLINA" -> "fuel_gas"
+                            "DIESEL" -> "fuel_diesel"
+                            "GAS_LP" -> "fuel_gas_lp"
+                            "ELECTRICO" -> "fuel_ev"
+                            else -> "fuel_gas"
+                        }
+                        savedStateHandle["categoryId"] = defaultCatId
                     }
                 }
                 savedStateHandle["loadedFromDb"] = true

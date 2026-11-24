@@ -74,7 +74,14 @@
     <string name="priority_baja">Low Priority</string>
 
     <!-- Vehículos -->
-    <string name="vehicles_title">My vehicles</string>
+    <string name="vehicles_title">My Garage</string>
+    <string name="vehicles_photo_section">Vehicle photo</string>
+    <string name="vehicles_photo_camera">Take photo</string>
+    <string name="vehicles_photo_gallery">Choose from gallery</string>
+    <string name="vehicles_photo_remove">Remove photo</string>
+    <string name="vehicles_photo_change">Change photo</string>
+    <string name="vehicles_photo_cd">Vehicle photo</string>
+    <string name="vehicles_photo_err_save">Failed to process selected image.</string>
     <string name="vehicles_new_title">New Vehicle</string>
     <string name="vehicles_edit_title">Edit Vehicle</string>
     <string name="vehicles_empty_title">You have no vehicles yet</string>
@@ -98,6 +105,24 @@
     <string name="vehicles_currency_label">Currency</string>
     <string name="vehicles_odometer_label">Current odometer *</string>
     <string name="vehicles_price_label">Original or purchase price (Optional)</string>
+    <string name="vehicles_more_details">More details (optional)</string>
+    <string name="vehicles_less_details">Fewer details</string>
+    <string name="vehicles_field_nickname">Nickname (e.g. Beast)</string>
+    <string name="vehicles_field_trim">Trim (e.g. GTI, XLT)</string>
+    <string name="vehicles_field_engine">Engine (e.g. 2.0L Turbo)</string>
+    <string name="vehicles_field_cylinders">Cylinders (1-16)</string>
+    <string name="vehicles_field_transmission">Transmission</string>
+    <string name="vehicles_trans_manual">Manual</string>
+    <string name="vehicles_trans_automatic">Automatic</string>
+    <string name="vehicles_field_color">Color</string>
+    <string name="vehicles_field_fuel_type">Fuel type</string>
+    <string name="vehicles_field_tank_capacity">Tank capacity</string>
+    <string name="vehicles_err_cylinders">Cylinders must be between 1 and 16</string>
+    <string name="vehicles_err_tank">Tank capacity must be greater than 0</string>
+    <string name="fuel_type_gas">Gasoline</string>
+    <string name="fuel_type_diesel">Diesel</string>
+    <string name="fuel_type_lpg">LPG</string>
+    <string name="fuel_type_ev">Electric</string>
     <string name="vehicles_save_btn">Save Vehicle</string>
     <string name="vehicles_saved_toast">Vehicle saved successfully</string>
     <string name="vehicles_err_required">Please fill in the required fields</string>
@@ -383,7 +408,7 @@
     <string name="goals_filter_all">All (%1$d)</string>
     <string name="goals_filter_showing">Showing: %1$s</string>
     <string name="goals_general_total">General total pending: %1$s</string>
-    <string name="goals_range">between %1$s and %2$s</string>
+    <string name="goals_range">Between %1$s and %2$s</string>
     <string name="goals_completed_section">Purchased (%1$d)</string>
     <string name="goals_est">Estimated: %1$s</string>
     <string name="goals_real_vs_est">Est. %1$s · Real %2$s</string>
